@@ -211,7 +211,8 @@ var Repo={
   collections:['offices','users','members','contacts','assets','mandates','requirements',
     'deals','viewings','offers','contracts','payments','commissions','enquiries',
     'channels','services','providers','partners','marketers','collabs',
-    'tasks','notifications','activity','settings'],
+    'tasks','notifications','activity','settings',
+    /* المرحلة الثالثة */ 'expenses','settlements','documents'],
 
   load:function(){
     DB=Store.read('db');
@@ -219,7 +220,27 @@ var Repo={
     // forward-compatible: a new collection added later must not break old data
     var self=this;
     this.collections.forEach(function(c){ if(!DB[c]) DB[c]=[]; });
+    this.migrate();
     return DB;
+  },
+  // Bases saved by an older build must keep working. Defaults are filled in
+  // once, in place, without touching anything the office already entered.
+  migrate:function(){
+    var self=this,dirty=false;
+    (DB.mandates||[]).forEach(function(m){ if(!m.state){m.state='متاح';dirty=true;} });
+    (DB.assets||[]).forEach(function(a){ if(!a.photos){a.photos=a.photo?[a.photo]:[];dirty=true;} });
+    (DB.deals||[]).forEach(function(d,i){
+      if(!d.no){d.no='D-'+String(2600+i+1);dirty=true;}
+      if(!d.purpose){var m=self.find('mandates',d.mandate_id);d.purpose=m?m.purpose:'إيجار';dirty=true;}
+    });
+    (DB.contracts||[]).forEach(function(c){
+      if(!c.kind){c.kind='إيجار';dirty=true;}
+      if(!c.end){c.end=addMonths(c.start||nowISO(),12);dirty=true;}
+      if(c.status==='active'){c.status='نشط';dirty=true;}
+      if(!c.asset_id&&c.mandate_id){var m=self.find('mandates',c.mandate_id);if(m){c.asset_id=m.asset_id;dirty=true;}}
+    });
+    (DB.payments||[]).forEach(function(p){ if(p.paid===undefined){p.paid=0;dirty=true;} });
+    if(dirty)this.flush();
   },
   flush:function(){ Store.write('db',DB); },
 
@@ -235,7 +256,8 @@ var Repo={
   },
   update:function(c,id,patch){
     // Commission entries are append-only: correction is a reversal, never an edit.
-    if(c==='commissions'||c==='activity'){ throw new Error('IMMUTABLE'); }
+    // العمولات وكشوف المالك والسجل: قيود لا حقول. التصحيح بقيد جديد.
+    if(c==='commissions'||c==='activity'||c==='settlements'){ throw new Error('IMMUTABLE'); }
     var row=this.find(c,id); if(!row)return null;
     Object.keys(patch).forEach(function(k){row[k]=patch[k];});
     row.updated_at=nowISO(); this.flush(); return row;
@@ -282,7 +304,7 @@ ar:{
  d_match:'طلب ⇄ عرض مع سبب واضح',d_clients:'ملاك، مشترون، مستأجرون',
  d_reports:'تقرير المالك وتقرير العميل',d_money:'عمولات وعقود ودفعات',
  d_chan:'أين نُشر ومن أين جاء الاستفسار',d_net:'المسوّقون والمكاتب الشريكة',
- d_srv:'صيانة وفنيون مقيَّمون',d_portal:'ما يراه الباحث عن عقار',
+ d_srv:'تحصيل وصيانة ومصروفات ومستحقات المالك',d_portal:'ما يراه الباحث عن عقار',
  d_admin:'الحسابات والأدوار والصلاحيات',d_log:'من فعل ماذا ومتى',
  d_tasks:'متابعات ومواعيد',d_notif:'ما يحتاج انتباهك',d_settings:'المكتب والرسائل والنسخ',
  add:'إضافة',save:'حفظ',cancel:'إلغاء',close:'إغلاق',send:'إرسال',approve:'اعتماد',reject:'رفض',
@@ -327,7 +349,7 @@ en:{
  d_match:'Request ⇄ listing with a stated reason',d_clients:'Owners, buyers, tenants',
  d_reports:'Owner and client reports',d_money:'Commissions, contracts, payments',
  d_chan:'Where published and where enquiries come from',d_net:'Marketers and partner offices',
- d_srv:'Maintenance and rated providers',d_portal:'What a seeker sees',
+ d_srv:'Collection, maintenance, expenses and owner dues',d_portal:'What a seeker sees',
  d_admin:'Accounts, roles and permissions',d_log:'Who did what and when',
  d_tasks:'Follow-ups and appointments',d_notif:'What needs attention',d_settings:'Office, messages, backup',
  add:'Add',save:'Save',cancel:'Cancel',close:'Close',send:'Send',approve:'Approve',reject:'Reject',
@@ -367,6 +389,11 @@ var SOURCES={own:['لدينا','Ours'],partner:['مكتب شريك','Partner'],s
 var CHANNELS=[['واتساب','WhatsApp'],['اتصال','Call'],['منصة إعلانية','Portal'],['انستقرام','Instagram'],
   ['إكس','X'],['سناب','Snapchat'],['إحالة','Referral'],['الموقع','Website']];
 var TRADES=[['تكييف','AC'],['سباكة','Plumbing'],['كهرباء','Electrical'],['دهانات','Painting'],['نجارة','Carpentry'],['نظافة','Cleaning']];
+var PURPOSES=[['إيجار','Rent'],['بيع','Sale'],['إدارة أملاك','Management']];
+var MSTATES=[['متاح','Available'],['محجوز','Reserved'],['مؤجر','Leased'],['مباع','Sold'],['مسحوب','Withdrawn']];
+var EXPCATS=[['صيانة','Maintenance'],['كهرباء','Electricity'],['ماء','Water'],['نظافة','Cleaning'],
+  ['رسوم حكومية','Government fees'],['تأمين','Insurance'],['أخرى','Other']];
+var DOCKINDS=[['صك','Title deed'],['هوية','ID'],['عقد','Contract'],['فاتورة','Invoice'],['صورة','Photo'],['أخرى','Other']];
 function bi(pair){return LANG==='en'?pair[1]:pair[0];}
 function biList(arr){return arr.map(bi);}
 
@@ -382,7 +409,9 @@ var ROLES={
  broker:{ar:'وسيط عقاري',en:'Broker',perms:['contact.view','contact.create','contact.edit','asset.view','asset.create',
    'mandate.view','mandate.create','deal.*','enquiry.*','report.client','service.request','commission.view.own']},
  accountant:{ar:'محاسب',en:'Accountant',perms:['contract.view','payment.*','commission.*','report.view','asset.view','deal.view']},
- marketer:{ar:'مسوّق متعاون',en:'Marketer',perms:['asset.view.own','asset.create','contact.create','deal.view.own','enquiry.create']},
+ // المسوّق يحتاج فتح صفقة وجدولة معاينة، وإلا انقطعت دورة التعاون قبل العمولة
+ marketer:{ar:'مسوّق متعاون',en:'Marketer',perms:['asset.view.own','asset.create','contact.create','contact.view',
+   'deal.view.own','deal.create','viewing.create','offer.create','enquiry.create','report.client','commission.view.own']},
  viewer:{ar:'مشاهد',en:'Viewer',perms:['contact.view','asset.view','mandate.view','deal.view']}
 };
 var Session={user:null,office:null,role:null};
@@ -421,7 +450,8 @@ var Seed={build:function(){
  var db={};
  Repo.collections.forEach(function(c){db[c]=[];});
  db.offices=[{id:oid,name_ar:'مكتب الشرق المميز',name_en:'Elite Eastern Office',city_ar:'الجبيل',city_en:'Jubail',
-   fal:'',cr:'',vat:'',phone:'0508085578',assignment:'rotation',sla_hours:24,created_at:nowISO()}];
+   fal:'',cr:'',vat:'',phone:'0508085578',assignment:'rotation',sla_hours:24,
+   rate_sale:2.5,rate_rent:2.5,mgmt_fee:5,created_at:nowISO()}];
  db.users=[
   {id:'u1',name_ar:'عبدالعزيز',name_en:'Abdulaziz',phone:'0500000001',pass:'1234',role:'owner',office_id:oid,active:true,created_at:nowISO()},
   {id:'u2',name_ar:'سارة القحطاني',name_en:'Sarah Alqahtani',phone:'0500000002',pass:'1234',role:'broker',office_id:oid,active:true,created_at:nowISO()},
@@ -436,17 +466,20 @@ var Seed={build:function(){
  ];
  var d=function(n){var x=new Date();x.setDate(x.getDate()-n);return x.toISOString();};
  db.assets=[
-  {id:'a1',office_id:oid,type:'شقة',hood:'الدانة',beds:3,baths:2,area:150,owner_id:'c3',photo:null,created_at:d(11)},
-  {id:'a2',office_id:oid,type:'فيلا',hood:'الخالدية',beds:5,baths:5,area:400,owner_id:'c4',photo:null,created_at:d(26)},
-  {id:'a3',office_id:oid,type:'شقة',hood:'الدانة',beds:3,baths:2,area:160,owner_id:null,photo:null,created_at:d(5)}
+  {id:'a1',office_id:oid,type:'شقة',hood:'الدانة',beds:3,baths:2,area:150,owner_id:'c3',photo:null,photos:[],created_at:d(11)},
+  {id:'a2',office_id:oid,type:'فيلا',hood:'الخالدية',beds:5,baths:5,area:400,owner_id:'c4',photo:null,photos:[],created_at:d(26)},
+  {id:'a3',office_id:oid,type:'شقة',hood:'الدانة',beds:3,baths:2,area:160,owner_id:null,photo:null,photos:[],created_at:d(5)},
+  {id:'a4',office_id:oid,type:'دور',hood:'الحمراء',beds:4,baths:3,area:220,owner_id:'c3',photo:null,photos:[],created_at:d(9)}
  ];
  db.mandates=[
-  {id:'m1',office_id:oid,asset_id:'a1',purpose:'إيجار',price:32000,source:'own',status:'معتمد',
+  {id:'m1',office_id:oid,asset_id:'a1',purpose:'إيجار',price:32000,source:'own',status:'معتمد',state:'متاح',
    by:'u1',channels:['منصة إعلانية','واتساب'],created_at:d(11)},
-  {id:'m2',office_id:oid,asset_id:'a2',purpose:'إيجار',price:95000,source:'own',status:'معتمد',
+  {id:'m2',office_id:oid,asset_id:'a2',purpose:'إيجار',price:95000,source:'own',status:'معتمد',state:'متاح',
    by:'u1',channels:['منصة إعلانية','انستقرام'],created_at:d(26)},
-  {id:'m3',office_id:oid,asset_id:'a3',purpose:'إيجار',price:34000,source:'partner',status:'معتمد',
-   by:'u1',partner:'مكتب الجبيل العقاري',split:50,channels:[],created_at:d(5)}
+  {id:'m3',office_id:oid,asset_id:'a3',purpose:'إيجار',price:34000,source:'partner',status:'معتمد',state:'متاح',
+   by:'u1',partner:'مكتب الجبيل العقاري',split:50,channels:[],created_at:d(5)},
+  {id:'m4',office_id:oid,asset_id:'a4',purpose:'إدارة أملاك',price:60000,source:'own',status:'معتمد',state:'متاح',
+   by:'u1',mgmt_fee:5,channels:[],created_at:d(9)}
  ];
  db.requirements=[
   {id:'r1',office_id:oid,contact_id:'c1',purpose:'إيجار',types:['شقة'],hoods:['الدانة','الحمراء'],
@@ -478,7 +511,7 @@ var Seed={build:function(){
    note:'عندي عميل جاد للفيلا، حصة 50%',status:'new',created_at:new Date(Date.now()-2*36e5).toISOString()}];
  db.tasks=[{id:'tk1',office_id:oid,title_ar:'متابعة فهد بعد المعاينة',due:new Date(Date.now()+864e5).toISOString(),
    assigned_to:'u2',status:'open',entity:'contact',entity_id:'c2',created_at:nowISO()}];
- db.settings=[{id:'s1',office_id:oid,messaging_confirmed:false,reminder_days:5,send_time:'08:00'}];
+ db.settings=[{id:'s1',office_id:oid,messaging_confirmed:false,reminder_days:5,grace_days:5,send_time:'08:00'}];
  db.activity=[];db.notifications=[];
  return db;
 }};
@@ -499,7 +532,8 @@ function send(ph,tx){if(navigator.share)navigator.share({text:tx}).catch(functio
 function asset(m){return Repo.find('assets',m.asset_id)||{};}
 function contactOf(id){return Repo.find('contacts',id)||{name_ar:'—'};}
 function userName(id){var u=Repo.find('users',id);return u?(LANG==='en'?u.name_en:u.name_ar):'—';}
-function liveMandates(){return Repo.where('mandates',function(m){return m.status==='معتمد';});}
+function liveMandates(){return Repo.where('mandates',function(m){
+  return m.status==='معتمد'&&['مسحوب','مباع'].indexOf(m.state||'متاح')<0;});}
 function mandateTitle(m){var a=asset(m);return (LANG==='en'?(TYPES.filter(function(x){return x[0]===a.type;})[0]||[a.type,a.type])[1]:a.type)+' — '+
   (LANG==='en'?(HOODS.filter(function(x){return x[0]===a.hood;})[0]||[a.hood,a.hood])[1]:a.hood);}
 function daysOnMarket(m){return daysBetween(new Date(),m.created_at);}
@@ -512,7 +546,8 @@ function slaState(r){
 }
 function match(r){
   var out=[];
-  liveMandates().forEach(function(m){
+  // عقار مؤجَّر أو مباع أو تحت الإدارة لا يدخل المطابقة — القفل عند المصدر لا في الواجهة
+  availableMandates().forEach(function(m){
     if(m.purpose!==r.purpose)return;
     var a=asset(m),ok=[],no=[],s=0;
     if(m.price>=r.min&&m.price<=r.max){s+=30;ok.push(L('الميزانية','Budget'));}
@@ -527,8 +562,9 @@ function match(r){
   return out.sort(function(x,y){return y.score-x.score;});
 }
 function payState(p){
-  if(p.paid>=p.amount)return 'مدفوع';
-  return daysBetween(new Date(),p.due)>5?'متأخر':'مستحق';
+  if((p.paid||0)>=p.amount)return 'مدفوع';
+  var st=Repo.all('settings')[0]||{},g=st.grace_days===undefined?5:st.grace_days;
+  return daysBetween(new Date(),p.due)>g?'متأخر':'مستحق';
 }
 function nextAssignee(){
   var o=Repo.find('offices',Session.office.id);
@@ -565,7 +601,7 @@ function doLogin(){
 }
 function quickLogin(id){var u=Repo.find('users',id);
   Session.user=u;Session.office=Repo.find('offices',u.office_id);Session.role=u.role;
-  Store.write('session',{user_id:u.id,lang:LANG});NAV='today';SUB=0;render();}
+  Store.write('session',{user_id:u.id,lang:LANG});NAV='today';SUB=0;runChecks();render();}
 function logout(){Store.write('session',null);Session={user:null,office:null,role:null};render();}
 function flipLang(){LANG=LANG==='ar'?'en':'ar';
   document.documentElement.lang=LANG;document.documentElement.dir=LANG==='ar'?'rtl':'ltr';
@@ -587,15 +623,17 @@ var SECS={
  match:{ic:'⇄',t:'sec_match',d:'d_match',subs:[['طلب ← عرض','Request → Listing'],['عرض ← طلب','Listing → Request'],['الملخص','Digest']]},
  clients:{ic:'☺',t:'sec_clients',d:'d_clients',subs:[['الكل','All'],['ملاك','Owners'],['باحثون','Seekers']]},
  reports:{ic:'📄',t:'sec_reports',d:'d_reports',subs:[['تقرير المالك','Owner'],['تقرير العميل','Client'],['الأداء','Performance']]},
- money:{ic:'₪',t:'sec_money',d:'d_money',subs:[['العمولات','Commissions'],['العقود','Contracts'],['التحصيل','Collections']]},
+ money:{ic:'₪',t:'sec_money',d:'d_money',subs:[['العمولات','Commissions'],['العقود','Contracts'],
+   ['التحصيل','Collections'],['مستحقات المالك','Owner dues']]},
  chan:{ic:'📡',t:'sec_chan',d:'d_chan',subs:[['النشر','Publish'],['الأداء','Performance']]},
  net:{ic:'👥',t:'sec_net',d:'d_net',subs:[['المسوّقون','Marketers'],['المكاتب الشريكة','Partners'],['طلبات التعاون','Requests']]},
- srv:{ic:'⚒',t:'sec_srv',d:'d_srv',subs:[['الطلبات','Requests'],['الفنيون','Providers']]},
+ srv:{ic:'⚒',t:'sec_srv',d:'d_srv',subs:[['الأملاك المُدارة','Managed'],['الصيانة','Maintenance'],
+   ['المصروفات','Expenses'],['الفنيون','Providers']]},
  tasks:{ic:'✓',t:'sec_tasks',d:'d_tasks',subs:[]},
  notif:{ic:'🔔',t:'sec_notif',d:'d_notif',subs:[]},
  portal:{ic:'◎',t:'sec_portal',d:'d_portal',subs:[]},
  admin:{ic:'🛡',t:'sec_admin',d:'d_admin',subs:[['المستخدمون','Users'],['الأدوار','Roles']]},
- log:{ic:'≡',t:'sec_log',d:'d_log',subs:[]},
+ log:{ic:'≡',t:'sec_log',d:'d_log',subs:[['الكل','All'],['الصفقات','Deals'],['المالية','Finance'],['العقارات','Properties']]},
  settings:{ic:'⚙',t:'sec_settings',d:'d_settings',subs:[['المكتب','Office'],['الرسائل','Messages'],['البيانات','Data']]}
 };
 function go(k,s){NAV=k;SUB=s||0;closeSheet();render();window.scrollTo({top:0,behavior:'smooth'});}
@@ -730,6 +768,7 @@ function enquiriesView(){
 function alertsView(){
   var items=[];
   liveMandates().forEach(function(m){
+    if(mState(m)!=='متاح'||m.purpose==='إدارة أملاك')return;
     var d=daysOnMarket(m);
     if(d>=21&&!viewingsOf(m.id).length)items.push({k:'a',t:mandateTitle(m),
       s:L('مضى '+d+' يومًا بلا معاينة','On market '+d+' days with no viewing'),a:L('راجع السعر أو الصور','Review price or photos')});
@@ -743,6 +782,32 @@ function alertsView(){
       s:L('طلبه مفتوح منذ '+Math.round(hoursSince(r.created_at))+' ساعة','Open '+Math.round(hoursSince(r.created_at))+'h'),
       a:L('أرسل تقريرًا الآن','Send a report'),go:'client:'+r.id});
   });
+  /* دورة الإيجار: متأخر وقارب على الانتهاء */
+  Repo.all('payments').forEach(function(p){
+    if(payState(p)!=='متأخر')return;
+    var ct=Repo.find('contracts',p.contract_id); if(!ct)return;
+    items.push({k:'a',t:contactOf(ct.contact_id).name_ar+' — '+M(payRemain(p))+' '+t('sar'),
+      s:L('دفعة متأخرة على العقد '+ct.no,'Overdue instalment on '+ct.no),
+      a:L('تحصيل الآن','Collect now'),go:'collect'});
+  });
+  Repo.where('contracts',function(c){return c.status==='نشط';}).forEach(function(ct){
+    var dl=daysLeft(ct);
+    if(dl<0)items.push({k:'a',t:L('العقد ','Contract ')+ct.no,s:L('انتهت مدته','Term has ended'),
+      a:L('جدّده أو أنهه','Renew or end'),go:'contracts'});
+    else if(dl<=60)items.push({k:'w',t:L('العقد ','Contract ')+ct.no,
+      s:L('ينتهي بعد '+dl+' يومًا','Expires in '+dl+' days'),a:L('ابدأ التجديد','Start renewal'),go:'contracts'});
+  });
+  /* دورة الإدارة */
+  managedMandates().forEach(function(m){
+    var b=ownerBook(m.asset_id);
+    if(b.earned-b.paid>0)items.push({k:'w',t:contactOf(asset(m).owner_id).name_ar,
+      s:L('مستحق للمالك '+M(b.earned-b.paid)+' ريال','Owner is owed '+M(b.earned-b.paid)),
+      a:L('جهّز الكشف','Prepare the statement'),go:'stmt:'+m.asset_id});
+  });
+  Repo.where('services',function(x){return x.status==='جديد';}).forEach(function(x){
+    items.push({k:'w',t:x.title,s:L('طلب صيانة بلا فني','Maintenance request unassigned'),
+      a:L('أسنده','Assign'),go:'srv'});
+  });
   Repo.where('collabs',function(c){return c.status==='new';}).forEach(function(c){
     items.push({k:'w',t:L('طلب تعاون من ','Collaboration from ')+c.from,s:esc(c.note),a:L('راجعه','Review'),go:'collab'});
   });
@@ -753,11 +818,16 @@ function alertsView(){
     '<div class="rt">'+esc(i.t)+'</div><div class="rs wrap">'+i.s+'</div>'+
     '<div class="rs" style="color:var(--jade);font-weight:700">← '+i.a+'</div></div></button>';}).join('');
 }
+
 function jump(x){
   var p=x.split(':');
   if(p[0]==='publish')return publishSheet(p[1]);
   if(p[0]==='owner')return ownerReport(p[1]);
   if(p[0]==='client')return clientReport(p[1]);
+  if(p[0]==='stmt')return ownerStatement(p[1]);
+  if(p[0]==='collect')return go('money',2);
+  if(p[0]==='contracts')return go('money',1);
+  if(p[0]==='srv')return go('srv',1);
   if(p[0]==='collab')return go('net',2);
 }
 
@@ -796,24 +866,39 @@ VIEWS.props=function(){
     'Another office holds it. A broker who finds it for a client has performed real work.')+'</div>';
   if(!list.length)return h+'<div class="empty"><b>'+t('nothing')+'</b></div>';
   return h+list.map(function(m){
-    var a=asset(m);
+    var a=asset(m),managed=m.purpose==='إدارة أملاك';
+    var ct=Repo.where('contracts',function(c){return c.mandate_id===m.id&&c.status==='نشط';})[0];
+    var dcount=docsOf('asset',a.id).length;
+    var live=Repo.where('deals',function(d){return d.mandate_id===m.id&&!isClosed(d);}).length;
     return '<div class="p"><div class="p-i" style="'+(a.photo?'background-image:url('+a.photo+')':'')+'">'+
     (a.photo?'':(ICONS[a.type]||'🏠'))+
     '<span class="tag '+(m.source==='own'?'t-o':'t-n')+'" style="position:absolute;top:8px;inset-inline-end:8px">'+bi(SOURCES[m.source])+'</span>'+
-    (m.status!=='معتمد'?'<span class="tag t-w" style="position:absolute;top:8px;inset-inline-start:8px">'+t('pending')+'</span>':'')+'</div>'+
+    (m.status!=='معتمد'?'<span class="tag t-w" style="position:absolute;top:8px;inset-inline-start:8px">'+t('pending')+'</span>'
+      :(mState(m)!=='متاح'?'<span style="position:absolute;top:8px;inset-inline-start:8px">'+stateTag(m)+'</span>':''))+
+    ((a.photos||[]).length>1?'<span class="tag t-n" style="position:absolute;bottom:8px;inset-inline-end:8px"><span class="num">'+a.photos.length+'</span> 🖼</span>':'')+'</div>'+
     '<div class="p-b"><div class="p-t">'+mandateTitle(m)+'</div>'+
-    '<div class="p-l">'+m.purpose+' · '+userName(m.by)+(m.split?' · '+m.split+'%':'')+'</div>'+
+    '<div class="p-l">'+m.purpose+' · '+userName(m.by)+(m.split?' · '+m.split+'%':'')+(managed?' · '+L('أتعاب','fee')+' '+(m.mgmt_fee||0)+'%':'')+'</div>'+
     '<div class="p-p num">'+M(m.price)+'<small>'+t('sar')+'</small></div>'+
     '<div class="p-m"><span><b class="num">'+a.beds+'</b> '+t('rooms')+'</span>'+
     '<span><b class="num">'+a.baths+'</b> '+t('baths')+'</span><span><b class="num">'+a.area+'</b> '+t('area')+'</span>'+
     ((m.channels||[]).length?'<span style="margin-inline-start:auto"><b class="num">'+m.channels.length+'</b> '+L('قناة','ch')+'</span>':'')+'</div>'+
+    (ct?'<div class="rs" style="margin-top:8px;color:var(--jade);font-weight:700">'+
+      L('عقد نشط','Active contract')+' '+esc(ct.no)+' · '+L('ينتهي بعد','ends in')+' <span class="num">'+Math.max(0,daysLeft(ct))+'</span> '+t('day')+'</div>':'')+
+    (live?'<div class="rs" style="margin-top:4px"><span class="num">'+live+'</span> '+L('صفقة مفتوحة','open deal(s)')+'</div>':'')+
     '<div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">'+
     (m.status!=='معتمد'&&can('mandate.create')
       ?'<button class="btn s" onclick="approveMandate(\''+m.id+'\')">'+t('approve')+'</button>'+
        '<button class="btn s g" onclick="rejectMandate(\''+m.id+'\')">'+t('reject')+'</button>'
-      :'<button class="btn s o" onclick="viewingSheet(\''+m.id+'\')">'+t('viewing')+'</button>'+
-       '<button class="btn s g" onclick="publishSheet(\''+m.id+'\')">'+L('نشر','Publish')+'</button>'+
-       (m.source==='own'?'<button class="btn s g" onclick="ownerReport(\''+m.id+'\')">'+t('owner_report')+'</button>':''))+
+      :(managed
+        ?'<button class="btn s" onclick="serviceSheet(\''+a.id+'\')">'+L('صيانة','Maintenance')+'</button>'+
+         '<button class="btn s o" onclick="expenseSheet(\''+a.id+'\')">'+L('مصروف','Expense')+'</button>'+
+         '<button class="btn s g" onclick="ownerStatement(\''+a.id+'\')">'+L('كشف المالك','Statement')+'</button>'
+        :(mState(m)==='متاح'
+          ?'<button class="btn s o" onclick="viewingSheet(\''+m.id+'\')">'+t('viewing')+'</button>'+
+           '<button class="btn s g" onclick="publishSheet(\''+m.id+'\')">'+L('نشر','Publish')+'</button>'+
+           (m.source==='own'?'<button class="btn s g" onclick="ownerReport(\''+m.id+'\')">'+t('owner_report')+'</button>':'')
+          :(ct?'<button class="btn s o" onclick="go(\'money\',1)">'+L('العقد','Contract')+'</button>':'')))+
+       '<button class="btn s g" onclick="docSheet(\'asset\',\''+a.id+'\')">'+L('مستندات','Docs')+(dcount?' ('+dcount+')':'')+'</button>')+
     '</div></div></div>';}).join('');
 };
 
@@ -822,14 +907,25 @@ VIEWS.deals=function(){
   if(SUB===2)return lossesView();
   var deals=Repo.all('deals').filter(function(d){return !isMarketer()||d.owner_user===Session.user.id;});
   if(!deals.length)return '<div class="empty"><b>'+t('nothing')+'</b>'+L('افتح صفقة من المطابقة','Open one from Matching')+'</div>';
-  return '<div class="board">'+STAGES.map(function(st){
+  var won=deals.filter(function(d){return d.won;});
+  var head=won.length?'<div class="sec">'+L('أُغلقت بنجاح','Closed won')+' <b>'+won.length+'</b></div>'+
+    won.slice().reverse().slice(0,4).map(function(d){
+      var m=Repo.find('mandates',d.mandate_id),ct=dealContract(d.id);
+      return '<button class="r" onclick="dealSheet(\''+d.id+'\')"><div class="ic g">✓</div><div class="rm">'+
+      '<div class="rt">'+esc(contactOf(d.contact_id).name_ar)+'</div>'+
+      '<div class="rs">'+(m?mandateTitle(m):'—')+' · <span class="num">'+M(d.value)+'</span></div></div>'+
+      '<div class="rv"><span class="tag t-'+(ct?'g':'w')+'">'+(ct?esc(ct.no):L('بلا عقد','No contract'))+'</span></div></button>';}).join('')
+    :'';
+  return head+'<div class="board">'+STAGES.map(function(st){
     var inS=deals.filter(function(d){return d.stage===st[0];});
     return '<div class="col"><div class="ch"><span>'+bi(st)+'</span><b class="num">'+inS.length+'</b></div>'+
     inS.map(function(d){var m=Repo.find('mandates',d.mandate_id),c=contactOf(d.contact_id);
       var days=daysBetween(new Date(),d.stage_at||d.created_at);
+      var nOff=dealOffers(d.id).length,nVw=dealViewings(d.id).length;
       return '<button class="dc '+(days>=14?'st':'')+'" onclick="dealSheet(\''+d.id+'\')">'+
       '<div class="t">'+esc(c.name_ar)+'</div><div class="s">'+(m?mandateTitle(m):'—')+'</div>'+
-      '<div class="v num">'+M(d.value)+'</div><div class="s num">'+days+' '+t('day')+'</div></button>';}).join('')+
+      '<div class="v num">'+M(d.value)+'</div>'+
+      '<div class="s num">'+days+' '+t('day')+(nVw?' · '+nVw+'👁':'')+(nOff?' · '+nOff+'₪':'')+'</div></button>';}).join('')+
     '</div>';}).join('')+'</div>';
 };
 
@@ -863,10 +959,11 @@ function lossesView(){
 
 VIEWS.more=function(){
   var n={match:Repo.all('requirements').reduce(function(s,r){return s+match(r).length;},0),
-   clients:Repo.all('contacts').length,reports:liveMandates().length,money:Repo.all('commissions').length,
+   clients:Repo.all('contacts').length,reports:liveMandates().length,money:Repo.all('commissions').length+Repo.where('payments',function(p){return payState(p)!=='مدفوع';}).length,
    chan:Repo.where('mandates',function(m){return (m.channels||[]).length;}).length,
    net:Repo.where('collabs',function(c){return c.status==='new';}).length,
-   srv:Repo.all('services').length,tasks:Repo.where('tasks',function(x){return x.status==='open';}).length,
+   srv:managedMandates().length+Repo.where('services',function(x){return x.status!=='منجز';}).length,
+   tasks:Repo.where('tasks',function(x){return x.status==='open';}).length,
    notif:Repo.where('notifications',function(x){return !x.read;}).length,
    portal:liveMandates().length,admin:Repo.all('users').length,log:Repo.all('activity').length,settings:0};
   return '<div class="note">'+L('كل قسم موجود من البداية — حتى ما لن يُستخدم اليوم. لا شيء يُبنى مرتين.',
@@ -978,48 +1075,149 @@ VIEWS.reports=function(){
 };
 
 VIEWS.money=function(){
-  if(!can('commission.view')&&!can('payment.view'))return '<div class="empty"><b>'+t('no_perm')+'</b></div>';
-  if(SUB===1){
-    var cts=Repo.all('contracts');
-    if(!cts.length)return '<div class="empty"><b>'+t('nothing')+'</b>'+L('أغلق صفقة بنجاح ثم أنشئ العقد','Close a deal, then create the contract')+'</div>';
-    return cts.map(function(ct){var ps=Repo.where('payments',function(p){return p.contract_id===ct.id;});
-      var c=contactOf(ct.contact_id);
-      return '<div class="k"><div class="rt">'+L('عقد','Contract')+' '+ct.no+'</div>'+
-      '<div class="rs">'+esc(c.name_ar)+' · <span class="num">'+M(ct.total)+'</span></div>'+
-      ps.map(function(p){var s=payState(p);
-        return '<div style="display:flex;gap:9px;align-items:center;padding:8px 0;border-top:1px solid var(--line)">'+
-        '<div class="rs num" style="width:32px">'+p.no+'/'+ps.length+'</div>'+
-        '<div class="rm"><div class="rs num">'+p.due+'</div></div><div class="rn num">'+M(p.amount)+'</div>'+
-        '<span class="tag t-'+(s==='مدفوع'?'g':s==='متأخر'?'a':'w')+'">'+
-        (s==='مدفوع'?t('paid'):s==='متأخر'?t('late'):t('due'))+'</span></div>';}).join('')+'</div>';}).join('');
-  }
-  if(SUB===2){
-    var due=Repo.where('payments',function(p){return payState(p)!=='مدفوع';});
-    if(!due.length)return '<div class="empty"><b>'+t('nothing')+'</b>'+L('يبدأ التحصيل عند أول عقد إيجار','Starts with the first lease')+'</div>';
-    return due.map(function(p){var ct=Repo.find('contracts',p.contract_id),c=contactOf(ct.contact_id);
-      var s=payState(p);
-      return '<div class="r top"><div class="ic '+(s==='متأخر'?'a':'w')+'">₪</div><div class="rm">'+
-      '<div class="rt">'+esc(c.name_ar)+'</div><div class="rs num">'+ct.no+' · '+p.due+'</div>'+
-      '<div style="display:flex;gap:6px;margin-top:8px">'+
-      '<button class="btn s w" onclick="payMsg(\''+p.id+'\')">'+L('معاينة الرسالة','Preview')+'</button>'+
-      (can('payment.record')?'<button class="btn s o" onclick="recordPay(\''+p.id+'\')">'+L('تسجيل السداد','Record')+'</button>':'')+
-      '</div></div><div class="rv"><div class="rn num">'+M(p.amount-p.paid)+'</div>'+
-      '<span class="tag t-'+(s==='متأخر'?'a':'w')+'">'+(s==='متأخر'?t('late'):t('due'))+'</span></div></div>';}).join('');
-  }
-  var coms=Repo.all('commissions').filter(function(x){return can('commission.view')||x.beneficiary===Session.user.id;});
-  var total=coms.reduce(function(s,x){return s+x.amount;},0);
-  return '<div class="hero g"><div class="t">'+t('commissions')+'</div><div class="v num">'+M(total)+'<small>'+t('sar')+'</small></div></div>'+
-  '<div class="note">'+L('السجل لا يُعدَّل ولا يُحذف. الخطأ يُصحَّح بقيد عكسي — رقم يُعدَّل بصمت لا يقبله أحد كدليل.',
-   'The ledger cannot be edited or deleted. Errors are corrected by a reversal — a silently editable figure is no evidence.')+'</div>'+
-  (coms.length?coms.map(function(x){
-    return '<div class="r top"><div class="ic '+(x.amount<0?'a':'g')+'">'+(x.amount<0?'↺':'₪')+'</div><div class="rm">'+
-    '<div class="rt">'+esc(x.who)+'</div><div class="rs wrap">'+esc(x.reason)+'</div>'+
-    '<div class="rs num">'+M(x.basis)+' × '+x.rate+'%</div>'+
-    (x.amount>0&&can('commission.create')?'<div style="margin-top:8px"><button class="btn s g" onclick="reverseCom(\''+x.id+'\')">'+
-      L('عكس القيد','Reverse')+'</button></div>':'')+'</div>'+
-    '<div class="rv"><div class="rn num" style="color:'+(x.amount<0?'var(--clay)':'var(--jade)')+'">'+M(x.amount)+'</div></div></div>';}).join('')
-  :'<div class="empty"><b>'+t('nothing')+'</b>'+L('يُنشأ القيد تلقائيًا عند إغلاق صفقة','Created automatically on a closed deal')+'</div>');
+  if(!can('commission.view')&&!can('payment.view')&&!can('payment.*')&&!can('commission.view.own'))
+    return '<div class="empty"><b>'+t('no_perm')+'</b></div>';
+  if(SUB===1)return contractsView();
+  if(SUB===2)return collectionsView();
+  if(SUB===3)return ownerDuesView();
+  return commissionsView();
 };
+
+/* العمولات — القيد الواحد صار مجموعة قيود: إجمالي ثم خصم لكل شريك */
+function commissionsView(){
+  var coms=Repo.all('commissions').filter(function(x){
+    return can('commission.view')||x.beneficiary===Session.user.id;});
+  var net=coms.reduce(function(s,x){return s+x.amount;},0);
+  var gross=coms.filter(function(x){return x.amount>0;}).reduce(function(s,x){return s+x.amount;},0);
+  var out=coms.filter(function(x){return x.amount<0;}).reduce(function(s,x){return s+x.amount;},0);
+  var h='<div class="hero g"><div class="t">'+L('صافي عمولات المكتب','Net office commission')+'</div>'+
+   '<div class="v num">'+M(net)+'<small>'+t('sar')+'</small></div>'+
+   '<div class="f">'+L('إجمالي','Gross')+' <span class="num">'+M(gross)+'</span> · '+
+   L('حصص الشركاء والمسوّقين','partner and marketer shares')+' <span class="num">'+M(out)+'</span></div></div>'+
+   '<div class="note">'+L('السجل لا يُعدَّل ولا يُحذف. كل مستفيد قيد مستقل، فتُقرأ الحصة دون حساب ذهني.',
+    'The ledger is append-only. Every beneficiary is a separate entry, so no share is computed in someone’s head.')+'</div>';
+  if(!coms.length)return h+'<div class="empty"><b>'+t('nothing')+'</b>'+
+    L('يُنشأ القيد تلقائيًا عند إغلاق صفقة','Created automatically on a closed deal')+'</div>';
+  var groups={},order=[];
+  coms.forEach(function(x){var k=x.deal_id||x.contract_id||x.id;
+    if(!groups[k]){groups[k]=[];order.push(k);}groups[k].push(x);});
+  return h+order.map(function(k){
+    var rows=groups[k],d=Repo.find('deals',k),sum=rows.reduce(function(a,b){return a+b.amount;},0);
+    return '<div class="k"><div style="display:flex;align-items:baseline;gap:6px">'+
+    '<div class="rt" style="flex:1">'+(d?esc(contactOf(d.contact_id).name_ar)+' · '+esc(d.no||''):L('قيد','Entry'))+'</div>'+
+    '<div class="rn num" style="color:'+(sum<0?'var(--clay)':'var(--jade)')+'">'+M(sum)+'</div></div>'+
+    rows.map(function(x){
+      var lbl={gross:L('إجمالي العمولة','Gross'),partner:L('مكتب شريك','Partner office'),
+        collab:L('تعاون','Collaboration'),marketer:L('مسوّق','Marketer'),
+        renewal:L('تجديد','Renewal')}[x.kind]||(x.amount<0?L('خصم','Deduction'):L('عمولة','Commission'));
+      return '<div style="display:flex;gap:9px;align-items:flex-start;padding:9px 0;border-top:1px solid var(--line)">'+
+      '<div class="ic '+(x.amount<0?'a':'g')+'" style="width:30px;height:30px;font-size:13px">'+(x.amount<0?'−':'₪')+'</div>'+
+      '<div class="rm"><div class="rt" style="font-size:13px">'+esc(x.who)+' <span class="tag t-n">'+lbl+'</span></div>'+
+      '<div class="rs wrap">'+esc(x.reason)+'</div>'+
+      '<div class="rs num">'+M(x.basis)+' × '+x.rate+'%</div>'+
+      (x.amount>0&&x.kind!=='reversal'&&can('commission.create')?'<div style="margin-top:6px">'+
+        '<button class="btn s g" onclick="reverseCom(\''+x.id+'\')">'+L('عكس القيد','Reverse')+'</button></div>':'')+'</div>'+
+      '<div class="rv"><div class="rn num" style="color:'+(x.amount<0?'var(--clay)':'var(--jade)')+'">'+M(x.amount)+'</div></div></div>';}).join('')+
+    '</div>';}).join('');
+}
+
+/* العقود — الحالة والمدة المتبقية والتجديد والإنهاء في مكان واحد */
+function contractsView(){
+  var cts=Repo.all('contracts');
+  if(!cts.length)return '<div class="empty"><b>'+t('nothing')+'</b>'+
+    L('أغلق صفقة بنجاح ثم أنشئ العقد','Close a deal, then create the contract')+'</div>';
+  var soon=cts.filter(function(c){return c.status==='نشط'&&daysLeft(c)<=60;}).length;
+  var h=soon?'<div class="note"><b>'+soon+'</b> '+L('عقدًا ينتهي خلال ٦٠ يومًا — التجديد يبدأ قبل الانتهاء لا بعده',
+    'contract(s) expire within 60 days — renewal starts before, not after')+'</div>':'';
+  return h+cts.sort(function(a,b){return new Date(a.end)-new Date(b.end);}).map(function(ct){
+    var ps=contractPayments(ct.id),c=contactOf(ct.contact_id);
+    var got=ctCollected(ct.id),arr=ctArrears(ct.id),dl=daysLeft(ct);
+    var live=ct.status==='نشط';
+    var cls=ct.status==='مجدد'?'t-n':ct.status==='منتهٍ'?'t-n':dl<0?'t-a':dl<=60?'t-w':'t-g';
+    return '<div class="k"><div style="display:flex;align-items:baseline;gap:6px">'+
+    '<div class="rt" style="flex:1">'+esc(ct.kind)+' '+esc(ct.no)+'</div>'+
+    '<span class="tag '+cls+'">'+esc(ct.status)+'</span></div>'+
+    '<div class="rs">'+esc(c.name_ar)+' · <span class="num">'+esc(dstr(ct.start))+'</span> → <span class="num">'+esc(dstr(ct.end))+'</span>'+
+    (live?' · '+(dl<0?L('متجاوز','overdue'):L('متبقٍ','left')+' '+Math.abs(dl)+' '+t('day')):'')+'</div>'+
+    '<div class="grid3" style="margin-top:10px;margin-bottom:0"><div class="m"><div class="t">'+L('القيمة','Value')+'</div><div class="v num">'+M(ct.total)+'</div></div>'+
+    '<div class="m g"><div class="t">'+L('محصَّل','Collected')+'</div><div class="v num">'+M(got)+'</div></div>'+
+    '<div class="m a"><div class="t">'+L('متأخر','Overdue')+'</div><div class="v num">'+M(arr)+'</div></div></div>'+
+    '<div class="bars '+(arr?'a':'')+'" style="margin-top:10px"><i style="width:'+(ct.total?Math.min(100,Math.round(got/ct.total*100)):0)+'%"></i></div>'+
+    ps.map(function(p){var st=payState(p);
+      return '<div style="display:flex;gap:9px;align-items:center;padding:8px 0;border-top:1px solid var(--line)">'+
+      '<div class="rs num" style="width:34px">'+p.no+'/'+ps.length+'</div>'+
+      '<div class="rm"><div class="rs num">'+esc(p.due)+'</div><div class="rs">'+esc(p.kind||'')+'</div></div>'+
+      '<div class="rn num">'+M(p.amount)+'</div>'+
+      ((p.paid||0)>0&&(p.paid||0)<p.amount?'<span class="tag t-w">'+L('جزئي','Partial')+'</span>':
+        '<span class="tag t-'+(st==='مدفوع'?'g':st==='متأخر'?'a':'w')+'">'+
+        (st==='مدفوع'?t('paid'):st==='متأخر'?t('late'):t('due'))+'</span>')+
+      (st!=='مدفوع'&&(can('payment.record')||can('payment.*'))?'<button class="btn s o" onclick="paySheet(\''+p.id+'\')">'+
+        L('سداد','Pay')+'</button>':'')+'</div>';}).join('')+
+    '<div style="display:flex;gap:6px;margin-top:11px;flex-wrap:wrap">'+
+    (live&&ct.kind==='إيجار'?'<button class="btn s" onclick="renewSheet(\''+ct.id+'\')">'+L('تجديد','Renew')+'</button>':'')+
+    (live?'<button class="btn s g" onclick="endContract(\''+ct.id+'\')">'+L('إنهاء','End')+'</button>':'')+
+    '<button class="btn s g" onclick="docSheet(\'contract\',\''+ct.id+'\')">'+L('مستندات','Docs')+
+      (docsOf('contract',ct.id).length?' ('+docsOf('contract',ct.id).length+')':'')+'</button>'+
+    (ct.deal_id?'<button class="btn s g" onclick="dealSheet(\''+ct.deal_id+'\')">'+L('الصفقة','Deal')+'</button>':'')+
+    '</div></div>';}).join('');
+}
+
+/* التحصيل — المتأخرات أولًا، والسداد الجزئي مقبول لأنه يحدث فعلًا */
+function collectionsView(){
+  var due=Repo.all('payments').filter(function(p){return payState(p)!=='مدفوع';});
+  var late=due.filter(function(p){return payState(p)==='متأخر';});
+  var lateSum=late.reduce(function(s,p){return s+payRemain(p);},0);
+  var dueSum=due.reduce(function(s,p){return s+payRemain(p);},0);
+  if(!due.length)return '<div class="empty"><b>'+L('لا مستحقات','Nothing due')+'</b>'+
+    L('يبدأ التحصيل عند أول عقد','Collection starts with the first contract')+'</div>';
+  var h=(lateSum?'<div class="hero a"><div class="t">'+L('متأخرات','Arrears')+'</div><div class="v num">'+M(lateSum)+
+    '<small>'+t('sar')+'</small></div><div class="f"><span class="num">'+late.length+'</span> '+L('دفعة','instalments')+'</div></div>'
+   :'<div class="hero g"><div class="t">'+L('لا متأخرات','No arrears')+'</div><div class="v num">'+M(dueSum)+
+    '<small>'+t('sar')+'</small></div><div class="f">'+L('مستحق قادم','upcoming')+'</div></div>');
+  return h+due.sort(function(a,b){return new Date(a.due)-new Date(b.due);}).map(function(p){
+    var ct=Repo.find('contracts',p.contract_id); if(!ct)return '';
+    var c=contactOf(ct.contact_id),st=payState(p),part=(p.paid||0)>0;
+    return '<div class="r top"><div class="ic '+(st==='متأخر'?'a':'w')+'">₪</div><div class="rm">'+
+    '<div class="rt">'+esc(c.name_ar)+'</div>'+
+    '<div class="rs num">'+esc(ct.no)+' · '+esc(p.due)+' · '+L('دفعة','inst.')+' '+p.no+'</div>'+
+    (part?'<div class="rs">'+L('سُدّد','Paid')+' <span class="num">'+M(p.paid)+'</span> '+L('من','of')+' <span class="num">'+M(p.amount)+'</span></div>':'')+
+    '<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">'+
+    '<button class="btn s w" onclick="payMsg(\''+p.id+'\')">'+L('معاينة الرسالة','Preview')+'</button>'+
+    ((can('payment.record')||can('payment.*'))?'<button class="btn s o" onclick="paySheet(\''+p.id+'\')">'+L('تسجيل السداد','Record')+'</button>':'')+
+    '</div></div><div class="rv"><div class="rn num">'+M(payRemain(p))+'</div>'+
+    '<span class="tag t-'+(st==='متأخر'?'a':'w')+'">'+(st==='متأخر'?t('late'):t('due'))+'</span></div></div>';}).join('');
+}
+
+/* مستحقات المالك — محصَّل ناقص مصروفاته ناقص الأتعاب */
+function ownerDuesView(){
+  var ms=managedMandates();
+  if(!ms.length)return '<div class="empty"><b>'+t('nothing')+'</b>'+
+    L('سجّل عقارًا بغرض «إدارة أملاك» ليظهر حسابه هنا','Add a property with purpose “Management” to open its account')+'</div>';
+  return '<div class="note">'+L('حساب المالك دفتر لا حقل: استحقاق يُصدَر ثم سداد يُسجَّل، والفرق هو الرصيد.',
+   'The owner account is a book, not a field: dues are issued, transfers are recorded, the difference is the balance.')+'</div>'+
+  ms.map(function(m){
+    var a=asset(m),b=ownerBook(a.id),o=contactOf(a.owner_id);
+    return '<div class="k"><div class="rt">'+mandateTitle(m)+'</div>'+
+    '<div class="rs">'+esc(o.name_ar)+' · '+L('أتعاب','fee')+' '+b.fee+'%</div>'+
+    '<div class="grid3" style="margin-top:11px;margin-bottom:0">'+
+    '<div class="m g"><div class="t">'+L('محصَّل','Collected')+'</div><div class="v num">'+M(b.collected)+'</div></div>'+
+    '<div class="m a"><div class="t">'+L('مصروفات','Expenses')+'</div><div class="v num">'+M(b.expenses)+'</div></div>'+
+    '<div class="m"><div class="t">'+L('أتعابنا','Our fee')+'</div><div class="v num">'+M(b.mgmt)+'</div></div></div>'+
+    '<div class="r" style="margin-top:10px;background:var(--mineral)"><div class="rm">'+
+    '<div class="rt">'+L('الرصيد للمالك','Balance owed')+'</div>'+
+    '<div class="rs">'+L('حُوِّل','Transferred')+' <span class="num">'+M(b.paid)+'</span></div></div>'+
+    '<div class="rv"><div class="rn num" style="color:var(--jade)">'+M(b.earned-b.paid)+'</div></div></div>'+
+    '<div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap">'+
+    '<button class="btn s" onclick="ownerStatement(\''+a.id+'\')">'+L('كشف الحساب','Statement')+'</button>'+
+    '<button class="btn s o" onclick="expenseSheet(\''+a.id+'\')">'+L('مصروف','Expense')+'</button>'+
+    '<button class="btn s g" onclick="serviceSheet(\''+a.id+'\')">'+L('صيانة','Maintenance')+'</button></div>'+
+    (b.book.length?'<div class="sec">'+L('الدفتر','The book')+' <b>'+b.book.length+'</b></div>'+
+      b.book.slice().reverse().slice(0,6).map(function(x){
+        return '<div style="display:flex;gap:9px;padding:7px 0;border-top:1px solid var(--line)">'+
+        '<div class="rm"><div class="rs">'+esc(x.type)+' · <span class="num">'+esc(dstr(x.created_at))+'</span></div></div>'+
+        '<div class="rn num" style="color:'+(x.type==='سداد'?'var(--clay)':'var(--jade)')+'">'+M(x.amount)+'</div></div>';}).join(''):'')+
+    '</div>';}).join('');
+}
 
 VIEWS.chan=function(){
   if(SUB===1){
@@ -1053,9 +1251,12 @@ VIEWS.net=function(){
       return '<div class="r top"><div class="ic '+cls+'">🤝</div><div class="rm">'+
       '<div class="rt">'+esc(c.from)+'</div><div class="rs num">'+esc(c.phone)+'</div>'+
       '<div class="rs wrap">'+(m?mandateTitle(m)+' · ':'')+esc(c.note)+'</div>'+
-      (c.status==='new'&&can('network.*')?'<div style="display:flex;gap:6px;margin-top:8px">'+
+      (c.status==='new'&&(can('network.*')||Session.role==='owner')?'<div style="display:flex;gap:6px;margin-top:8px">'+
         '<button class="btn s" onclick="collabAct(\''+c.id+'\',\'معتمد\')">'+t('approve')+'</button>'+
         '<button class="btn s g" onclick="collabAct(\''+c.id+'\',\'مرفوض\')">'+t('reject')+'</button></div>':'')+
+      (c.status==='معتمد'?'<div class="rs">'+L('حصتهم','Their share')+' <b class="num">'+(c.split||0)+'%</b></div>'+
+        '<div style="margin-top:8px"><button class="btn s" onclick="collabDeal(\''+c.id+'\')">'+
+        L('تسجيل عميلهم وفتح الصفقة','Register their client and open the deal')+'</button></div>':'')+
       '</div><div class="rv"><span class="tag t-'+cls+'">'+esc(c.status==='new'?L('جديد','New'):c.status)+'</span></div></div>';}).join('');
   }
   if(SUB===1){
@@ -1077,24 +1278,78 @@ VIEWS.net=function(){
 };
 
 VIEWS.srv=function(){
-  if(SUB===1)return '<div class="note">'+L('التقييم من عمل منجز فقط — لذلك لا يمكن تزويره. والمنصة تعرّف ولا تتعاقد.',
+  if(SUB===3)return providersView();
+  if(SUB===2)return expensesView();
+  if(SUB===1)return maintenanceView();
+  var ms=managedMandates();
+  if(!ms.length)return '<div class="empty"><b>'+t('nothing')+'</b>'+
+    L('تبدأ الإدارة بعقار غرضه «إدارة أملاك» — والوحدة جاهزة','Management starts with a property whose purpose is “Management”')+'</div>';
+  return '<div class="note">'+L('الإدارة ليست تحصيلًا فقط: مستأجر وعقد ودفعات وصيانة ومصروف ثم مستحق للمالك.',
+   'Management is not just collection: tenant, contract, instalments, maintenance, expense, then owner dues.')+'</div>'+
+  ms.map(function(m){
+    var a=asset(m),b=ownerBook(a.id),o=contactOf(a.owner_id);
+    var ct=Repo.where('contracts',function(c){return c.asset_id===a.id&&c.status==='نشط';})[0];
+    var open=Repo.where('services',function(x){return x.asset_id===a.id&&x.status!=='منجز';}).length;
+    return '<div class="k"><div class="rt">'+mandateTitle(m)+'</div>'+
+    '<div class="rs">'+L('المالك','Owner')+': '+esc(o.name_ar)+'</div>'+
+    '<div class="rs">'+(ct?L('المستأجر','Tenant')+': '+esc(contactOf(ct.contact_id).name_ar)+' · '+esc(ct.no):
+      '<span style="color:var(--clay);font-weight:700">'+L('لا مستأجر — العقار شاغر','No tenant — vacant')+'</span>')+'</div>'+
+    '<div class="grid3" style="margin-top:11px;margin-bottom:0">'+
+    '<div class="m g"><div class="t">'+L('محصَّل','Collected')+'</div><div class="v num">'+M(b.collected)+'</div></div>'+
+    '<div class="m w"><div class="t">'+L('صيانة مفتوحة','Open jobs')+'</div><div class="v num">'+open+'</div></div>'+
+    '<div class="m"><div class="t">'+L('للمالك','Owed')+'</div><div class="v num">'+M(b.earned-b.paid)+'</div></div></div>'+
+    '<div style="display:flex;gap:6px;margin-top:11px;flex-wrap:wrap">'+
+    '<button class="btn s" onclick="serviceSheet(\''+a.id+'\')">'+L('طلب صيانة','Maintenance')+'</button>'+
+    '<button class="btn s o" onclick="expenseSheet(\''+a.id+'\')">'+L('مصروف','Expense')+'</button>'+
+    '<button class="btn s g" onclick="ownerStatement(\''+a.id+'\')">'+L('كشف المالك','Statement')+'</button>'+
+    '<button class="btn s g" onclick="docSheet(\'asset\',\''+a.id+'\')">'+L('مستندات','Docs')+'</button></div></div>';}).join('');
+};
+
+function maintenanceView(){
+  var srs=Repo.all('services');
+  if(!srs.length)return '<div class="empty"><b>'+t('nothing')+'</b>'+
+    L('يُنشأ الطلب من العقار المُدار','Requests are opened from a managed property')+'</div>';
+  return srs.slice().reverse().map(function(s){
+    var a=Repo.find('assets',s.asset_id)||{};
+    var pr=s.provider_id?Repo.find('providers',s.provider_id):null;
+    var cls=s.status==='منجز'?'g':s.status==='مُسند'?'w':'a';
+    return '<div class="r top"><div class="ic '+cls+'">⚒</div><div class="rm"><div class="rt">'+esc(s.title)+'</div>'+
+    '<div class="rs">'+esc(a.type||'')+' — '+esc(a.hood||'')+' · '+esc(s.trade)+' · '+L('على','on')+' '+esc(s.payer)+'</div>'+
+    (pr?'<div class="rs" style="color:var(--jade)">'+esc(pr.name)+'</div>':'')+
+    (s.cost?'<div class="rs num">'+M(s.cost)+' '+t('sar')+'</div>':'')+
+    '<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">'+
+    (!pr?'<button class="btn s" onclick="assignProvider(\''+s.id+'\')">'+L('إسناد لفني','Assign')+'</button>':'')+
+    (s.status!=='منجز'?'<button class="btn s o" onclick="completeService(\''+s.id+'\')">'+L('إقفال','Close')+'</button>':'')+
+    '</div></div><div class="rv"><span class="tag t-'+cls+'">'+esc(s.status)+'</span></div></div>';}).join('');
+}
+
+function expensesView(){
+  var xs=Repo.all('expenses');
+  if(!xs.length)return '<div class="empty"><b>'+t('nothing')+'</b>'+
+    L('كل مصروف يُقيَّد على جهة — وهذا ما يجعل كشف المالك قابلًا للدفاع عنه',
+      'Every expense is charged to someone — that is what makes the owner statement defensible')+'</div>';
+  var byPayer={};xs.forEach(function(x){byPayer[x.payer]=(byPayer[x.payer]||0)+x.amount;});
+  return '<div class="grid3">'+['المالك','المستأجر','المكتب'].map(function(k,i){
+    return '<div class="m '+['a','w','g'][i]+'"><div class="t">'+L('على '+k,'On '+k)+'</div>'+
+    '<div class="v num">'+M(byPayer[k]||0)+'</div></div>';}).join('')+'</div>'+
+  xs.slice().reverse().map(function(x){
+    var a=Repo.find('assets',x.asset_id)||{};
+    return '<div class="r"><div class="ic a">−</div><div class="rm">'+
+    '<div class="rt">'+esc(x.category)+(x.note?' — '+esc(x.note):'')+'</div>'+
+    '<div class="rs">'+esc(a.type||'')+' — '+esc(a.hood||'')+' · <span class="num">'+esc(x.date)+'</span></div></div>'+
+    '<div class="rv"><div class="rn num">'+M(x.amount)+'</div>'+
+    '<span class="tag t-n">'+esc(x.payer)+'</span></div></div>';}).join('');
+}
+
+function providersView(){
+  return '<div class="note">'+L('التقييم من عمل منجز فقط — لذلك لا يمكن تزويره. والمنصة تعرّف ولا تتعاقد.',
     'Ratings come only from completed jobs, so they cannot be faked. The platform introduces; it does not contract.')+'</div>'+
     Repo.all('providers').map(function(p){
       return '<div class="r"><div class="ic">🔧</div><div class="rm"><div class="rt">'+esc(p.name)+'</div>'+
       '<div class="rs">'+p.trade+' · '+L('اشتراك','Sub')+' '+p.sub+'</div></div>'+
       '<div class="rv"><div class="stars">'+'★'.repeat(Math.round(p.rating))+' <span class="num" style="color:var(--ink)">'+p.rating+'</span></div>'+
       '<div class="rs" style="font-size:10.5px"><span class="num">'+p.jobs+'</span> '+L('عمل','jobs')+'</div></div></div>';}).join('');
-  var srs=Repo.all('services');
-  if(!srs.length)return '<div class="empty"><b>'+t('nothing')+'</b>'+
-    L('يبدأ عند أول عقد إدارة أملاك — والوحدة جاهزة','Starts with the first management contract — the module is ready')+'</div>';
-  return srs.map(function(s){var m=Repo.find('mandates',s.mandate_id);
-    var pr=s.provider_id?Repo.find('providers',s.provider_id):null;
-    return '<div class="r top"><div class="ic w">⚒</div><div class="rm"><div class="rt">'+esc(s.title)+'</div>'+
-    '<div class="rs">'+(m?mandateTitle(m)+' · ':'')+s.trade+' · '+L('على','on')+' '+s.payer+'</div>'+
-    (pr?'<div class="rs" style="color:var(--jade)">'+esc(pr.name)+'</div>'
-      :'<div style="margin-top:8px"><button class="btn s" onclick="assignProvider(\''+s.id+'\')">'+L('إسناد لفني','Assign')+'</button></div>')+
-    '</div><div class="rv"><span class="tag t-'+(s.status==='منجز'?'g':'w')+'">'+s.status+'</span></div></div>';}).join('');
-};
+}
 
 VIEWS.tasks=function(){
   var ts=Repo.all('tasks').filter(function(x){return !isMarketer()||x.assigned_to===Session.user.id;});
@@ -1119,7 +1374,7 @@ VIEWS.notif=function(){
 };
 
 VIEWS.portal=function(){
-  var pub=Repo.where('mandates',function(m){return m.status==='معتمد'&&['own','partner'].indexOf(m.source)>-1;});
+  var pub=availableMandates().filter(function(m){return ['own','partner'].indexOf(m.source)>-1;});
   return '<div class="note">'+L('لا يظهر اسم المالك ولا جواله ولا الحد الأدنى للسعر — وهذا السبب الوحيد الذي يجعل المالك يوافق على النشر.',
    'No owner name, phone or floor price — the only reason an owner agrees to publish.')+'</div>'+
   '<div style="background:var(--ink);border-radius:15px;padding:16px;color:#fff;margin-bottom:11px">'+
@@ -1151,7 +1406,10 @@ VIEWS.admin=function(){
 };
 
 VIEWS.log=function(){
-  var acts=Repo.all('activity').slice().reverse().slice(0,120);
+  var f={1:['deal','viewing','offer'],2:['commission','payment','contract','expense','asset'],
+    3:['mandate','asset','service','document']}[SUB];
+  var acts=Repo.all('activity').filter(function(a){return !f||f.indexOf(a.entity)>-1;})
+    .slice().reverse().slice(0,150);
   if(!acts.length)return '<div class="empty"><b>'+t('nothing')+'</b></div>';
   return '<div class="note">'+L('السجل لا يُعدَّل ولا يُحذف — من فعل ماذا ومتى.','Append-only: who did what and when.')+'</div>'+
   '<div class="tl">'+acts.map(function(a){
@@ -1175,7 +1433,9 @@ VIEWS.settings=function(){
     (s.messaging_confirmed?'':'<button class="btn" onclick="confirmMessaging()">'+L('اعتماد نصوص الرسائل','Approve message wording')+'</button>');
   }
   if(SUB===2){
-    return '<div class="note">'+t('export_hint')+' · '+t('storage')+': <b>'+Store.driver()+'</b></div>'+
+    return '<div class="note">'+t('export_hint')+' · '+t('storage')+': <b>'+Store.driver()+'</b> · '+
+    L('الحجم','Size')+' <b class="num">'+storageKB()+'</b> KB'+
+    (storageKB()>3500?' — <b style="color:var(--clay)">'+L('اقترب الحد، احذف صورًا كبيرة أو خذ نسخة','Near the limit — remove large images or take a backup')+'</b>':'')+'</div>'+
     '<div class="k"><div class="rt">'+t('backup')+'</div>'+
     '<div class="rs wrap">'+L('انسخ النص واحفظه في ملاحظاتك','Copy and keep it in your notes')+'</div>'+
     '<textarea id="bk" style="margin-top:10px;min-height:120px;font-size:11px" readonly>'+esc(Repo.export())+'</textarea>'+
@@ -1192,11 +1452,537 @@ VIEWS.settings=function(){
   '<div class="f"><label>'+L('جوال المكتب','Phone')+'</label><input id="oph" value="'+esc(o.phone||'')+'"></div></div>'+
   '<div class="f"><label>'+L('مهلة الرد على الطلب (ساعة)','Response window (hours)')+'</label>'+
   '<input id="osla" type="number" value="'+(o.sla_hours||24)+'"></div>'+
+  '<div class="two"><div class="f"><label>'+L('عمولة البيع %','Sale commission %')+'</label>'+
+  '<input id="ors" type="number" step="0.1" value="'+(o.rate_sale===undefined?2.5:o.rate_sale)+'"></div>'+
+  '<div class="f"><label>'+L('عمولة الإيجار %','Rent commission %')+'</label>'+
+  '<input id="orr" type="number" step="0.1" value="'+(o.rate_rent===undefined?2.5:o.rate_rent)+'"></div></div>'+
+  '<div class="f"><label>'+L('مهلة السماح قبل اعتبار الدفعة متأخرة (يوم)','Grace days before an instalment is late')+'</label>'+
+  '<input id="ogr" type="number" value="'+((Repo.all('settings')[0]||{}).grace_days===undefined?5:Repo.all('settings')[0].grace_days)+'"></div>'+
+  '<div class="note">'+L('النِسَب تُقيَّد وقت الإغلاق ولا تُطبَّق بأثر رجعي على قيود سابقة.',
+   'Rates are snapshotted at closing; changing them never rewrites past entries.')+'</div>'+
   '<div class="f"><label>'+L('إسناد العملاء','Client assignment')+'</label><div class="pick">'+
   [['rotation',L('بالتناوب','Rotation')],['creator',L('من سجّل أولًا','First to create')]].map(function(x){
     return '<button class="pk '+(o.assignment===x[0]?'on':'')+'" onclick="setAssign(\''+x[0]+'\')">'+x[1]+'</button>';}).join('')+
   '</div></div><button class="btn" onclick="saveOffice()">'+t('save')+'</button></div>';
 };
+
+/* ════════════════════════════════════════════════════════════════
+   11B · CYCLE ENGINE  —  المرحلة الثالثة
+   لا شاشات جديدة. هذه الطبقة تصل ما هو مبني أصلًا:
+   معاينة ← صفقة ← عرض ← تفاوض ← عقد ← دفعة ← عمولة ← إغلاق
+   عقد ← متأخرات ← تجديد ← انتهاء ← عودة العقار للمطابقة
+   إدارة ← تحصيل ← صيانة ← مصروف ← مستحقات المالك
+   تعاون ← موافقة ← صفقة ← توزيع العمولة على قيود منفصلة
+   ════════════════════════════════════════════════════════════════ */
+
+/* ── حالة العقار: القفل الذي يمنع تأجير عقار مؤجَّر ─────────────── */
+function mState(m){return (m&&m.state)||'متاح';}
+function setState(mid,s,why){
+  var m=Repo.find('mandates',mid); if(!m||mState(m)===s)return;
+  Repo.update('mandates',mid,{state:s,state_at:nowISO()});
+  logAct('mandate',mid,'state','حالة العقار: '+mState(m)+' ← '+s+(why?' ('+why+')':''),'Property state → '+s);
+}
+function availableMandates(){
+  return Repo.where('mandates',function(m){return m.status==='معتمد'&&mState(m)==='متاح'&&m.purpose!=='إدارة أملاك';});
+}
+function managedMandates(){
+  return Repo.where('mandates',function(m){return m.status==='معتمد'&&m.purpose==='إدارة أملاك';});
+}
+function stateTag(m){
+  var s=mState(m); if(s==='متاح')return '';
+  var cls=s==='مؤجر'||s==='مباع'?'t-o':s==='محجوز'?'t-w':'t-n';
+  return '<span class="tag '+cls+'">'+bi((MSTATES.filter(function(x){return x[0]===s;})[0])||[s,s])+'</span>';
+}
+
+/* ── التاريخ ──────────────────────────────────────────────────── */
+function addMonths(iso,n){var d=new Date(iso);d.setMonth(d.getMonth()+Number(n||0));return d.toISOString().slice(0,10);}
+function dstr(x){return String(x||'').slice(0,10);}
+function todayStr(){return new Date().toISOString().slice(0,10);}
+function weekKey(){var d=new Date();return d.getFullYear()+'w'+Math.ceil((((d-new Date(d.getFullYear(),0,1))/864e5)+1)/7);}
+
+/* ── الصفقة: العمود الفقري ────────────────────────────────────── */
+function dealOf(id){return Repo.find('deals',id);}
+function dealNo(){return 'D-'+String(2600+Repo.all('deals').length+1);}
+function dealViewings(id){return Repo.where('viewings',function(v){return v.deal_id===id;});}
+function dealOffers(id){return Repo.where('offers',function(o){return o.deal_id===id;})
+  .sort(function(a,b){return new Date(a.created_at)-new Date(b.created_at);});}
+function dealContract(id){return Repo.where('contracts',function(c){return c.deal_id===id;})[0];}
+function stageIndex(s){for(var i=0;i<STAGES.length;i++)if(STAGES[i][0]===s)return i;return -1;}
+function isClosed(d){return ['مغلقة','خسارة'].indexOf(d.stage)>-1;}
+/* التقدّم للأمام فقط — لا تُرجِع صفقة لمرحلة سابقة تلقائيًا */
+function advance(id,stage){
+  var d=dealOf(id); if(!d||isClosed(d))return;
+  if(stageIndex(stage)>stageIndex(d.stage))moveDeal(id,stage,true);
+}
+function openDealFor(mid,cid){
+  return Repo.where('deals',function(d){return d.mandate_id===mid&&d.contact_id===cid&&!isClosed(d);})[0];
+}
+
+/* ── العروض والتفاوض ─────────────────────────────────────────── */
+var oDraft={side:'client'};
+function offerSheet(dealId,counterOf){
+  var d=dealOf(dealId); if(!d)return;
+  var prev=counterOf?Repo.find('offers',counterOf):null;
+  var c=contactOf(d.contact_id);
+  oDraft={side:prev?(prev.side==='client'?'owner':'client'):'client'};
+  sheet('<h3>'+(prev?L('عرض مضاد','Counter-offer'):L('تسجيل عرض سعر','Record an offer'))+'</h3>'+
+  '<div class="sub">'+esc(c.name_ar)+' · '+L('المطلوب','Asking')+' <span class="num">'+M(d.value)+'</span></div>'+
+  (prev?'<div class="bubble">'+L('العرض السابق','Previous')+': <span class="num">'+M(prev.amount)+'</span> — '+
+    (prev.side==='client'?L('من العميل','from the client'):L('من المالك','from the owner'))+'</div>':'')+
+  '<div class="f" style="margin-top:12px"><label>'+L('مقدَّم من','Submitted by')+'</label><div class="pick">'+
+  [['client',L('العميل','Client')],['owner',L('المالك','Owner')]].map(function(x){
+    return '<button class="pk '+(oDraft.side===x[0]?'on':'')+'" onclick="oDraft.side=\''+x[0]+'\';offerSheet(\''+dealId+'\''+(counterOf?',\''+counterOf+'\'':'')+')">'+x[1]+'</button>';}).join('')+'</div></div>'+
+  '<div class="f"><label>'+L('المبلغ','Amount')+'</label><input id="ofa" type="number" inputmode="numeric" value="'+(prev?prev.amount:d.value)+'"></div>'+
+  '<div class="f"><label>'+L('ملاحظة','Note')+'</label><input id="ofn" placeholder="'+L('شروط، مدة، دفعات','terms, term, instalments')+'"></div>'+
+  '<button class="btn" onclick="saveOffer(\''+dealId+'\''+(counterOf?',\''+counterOf+'\'':'')+')">'+t('save')+'</button>');
+}
+function saveOffer(dealId,counterOf){
+  var amt=+val('ofa'); if(!amt){toast(L('أدخل المبلغ','Enter an amount'));return;}
+  var d=dealOf(dealId);
+  var o=Repo.insert('offers',{deal_id:dealId,mandate_id:d.mandate_id,contact_id:d.contact_id,
+    side:oDraft.side,amount:amt,note:val('ofn')||'',status:'مقدم',counter_of:counterOf||null,by:Session.user.id});
+  if(counterOf&&Repo.find('offers',counterOf).status==='مقدم')Repo.update('offers',counterOf,{status:'مضاد'});
+  logAct('deal',dealId,'offer','عرض سعر '+M(amt)+' من '+(oDraft.side==='client'?'العميل':'المالك'),'Offer '+amt);
+  advance(dealId,counterOf?'تفاوض':'عرض سعر');
+  closeSheet();dealSheet(dealId);toast(L('سُجّل العرض','Offer recorded'));
+}
+function respondOffer(id,st){
+  var o=Repo.find('offers',id),d=dealOf(o.deal_id);
+  if(st==='مضاد')return offerSheet(o.deal_id,id);
+  Repo.update('offers',id,{status:st,answered_at:nowISO(),answered_by:Session.user.id});
+  logAct('deal',o.deal_id,'offer_'+st,'العرض '+M(o.amount)+' — '+st,'Offer '+st);
+  if(st==='مقبول'){
+    Repo.update('deals',o.deal_id,{value:o.amount,agreed:o.amount,agreed_at:nowISO()});
+    advance(o.deal_id,'اتفاق');
+    notify('اتُّفق على '+M(o.amount)+' — جهّز العقد','Agreed at '+M(o.amount)+' — prepare the contract','alert');
+  }
+  closeSheet();dealSheet(o.deal_id);toast(st);
+}
+
+/* ── العمولة: قيود منفصلة لكل مستفيد، لا رقم واحد مجمّع ────────── */
+function comRate(purpose){
+  var o=Repo.find('offices',Session.office.id)||{};
+  return purpose==='بيع'?(o.rate_sale===undefined?2.5:o.rate_sale):(o.rate_rent===undefined?2.5:o.rate_rent);
+}
+function postCommission(dealId){
+  var d=dealOf(dealId),m=Repo.find('mandates',d.mandate_id),c=contactOf(d.contact_id);
+  var rate=comRate(d.purpose),gross=Math.round(d.value*rate/100);
+  if(!gross)return [];
+  var rows=[{who:L('المكتب','Office'),kind:'gross',beneficiary:d.owner_user,basis:d.value,rate:rate,
+    amount:gross,reason:'عمولة '+(d.purpose||'')+' — '+c.name_ar,deal_id:dealId}];
+  /* عقار مكتب شريك: m.split هو حصتنا، والباقي لهم */
+  if(m&&m.source==='partner'&&m.split){
+    var ps=Math.round(gross*(100-m.split)/100);
+    if(ps>0)rows.push({who:m.partner||L('مكتب شريك','Partner office'),kind:'partner',beneficiary:null,
+      basis:gross,rate:100-m.split,amount:-ps,reason:'حصة المكتب الشريك — '+(m.partner||''),deal_id:dealId});
+  }
+  /* مكتب تعاون طلب عميلنا أو عرضنا */
+  var cb=d.collab_id?Repo.find('collabs',d.collab_id):null;
+  if(cb&&cb.split){
+    var cs=Math.round(gross*cb.split/100);
+    if(cs>0)rows.push({who:cb.from,kind:'collab',beneficiary:null,basis:gross,rate:cb.split,
+      amount:-cs,reason:'حصة تعاون — '+cb.from,deal_id:dealId});
+  }
+  /* مسوّق متعاون */
+  if(d.marketer_id){
+    var mk=Repo.where('marketers',function(x){return x.user_id===d.marketer_id;})[0];
+    if(mk&&mk.share){var ms=Math.round(gross*mk.share/100);
+      if(ms>0)rows.push({who:userName(d.marketer_id),kind:'marketer',beneficiary:d.marketer_id,basis:gross,
+        rate:mk.share,amount:-ms,reason:'حصة المسوّق — '+userName(d.marketer_id),deal_id:dealId});}
+  }
+  rows.forEach(function(r){Repo.insert('commissions',r);});
+  return rows;
+}
+function dealCommissions(id){return Repo.where('commissions',function(x){return x.deal_id===id;});}
+function netOf(rows){return rows.reduce(function(s,x){return s+x.amount;},0);}
+
+/* ── العقد: إنشاء، جدول دفعات، تجديد، انتهاء ─────────────────── */
+var FREQ=[['سنوي','Annual',1],['نصف سنوي','Semi-annual',2],['ربع سنوي','Quarterly',4],['شهري','Monthly',12]];
+function freqN(f){var r=FREQ.filter(function(x){return x[0]===f;})[0];return r?r[2]:4;}
+var ctDraft={kind:'إيجار',freq:'ربع سنوي'};
+
+function contractSheet(dealId){
+  var d=dealOf(dealId); if(!d)return;
+  var m=Repo.find('mandates',d.mandate_id),c=contactOf(d.contact_id);
+  if(!ctDraft.deal||ctDraft.deal!==dealId)
+    ctDraft={deal:dealId,kind:d.purpose==='بيع'?'بيع':'إيجار',freq:'ربع سنوي'};
+  var rent=ctDraft.kind!=='بيع';
+  sheet('<h3>'+L('إنشاء العقد','Create the contract')+'</h3>'+
+  '<div class="sub">'+esc(c.name_ar)+' · '+(m?mandateTitle(m):'')+'</div>'+
+  '<div class="f"><label>'+L('نوع العقد','Contract type')+'</label><div class="pick">'+
+  [['إيجار',L('إيجار','Lease')],['بيع',L('بيع','Sale')]].map(function(x){
+    return '<button class="pk '+(ctDraft.kind===x[0]?'on':'')+'" onclick="ctDraft.kind=\''+x[0]+'\';contractSheet(\''+dealId+'\')">'+x[1]+'</button>';}).join('')+'</div></div>'+
+  '<div class="two"><div class="f"><label>'+L('البداية','Start')+'</label><input id="ctst" type="date" value="'+todayStr()+'"></div>'+
+  '<div class="f"><label>'+(rent?L('المدة (شهرًا)','Term (months)'):L('مدة السداد (شهرًا)','Payment term (months)'))+
+  '</label><input id="ctmo" type="number" value="'+(rent?12:1)+'"></div></div>'+
+  '<div class="f"><label>'+L('القيمة الإجمالية','Total value')+'</label><input id="cttot" type="number" value="'+d.value+'"></div>'+
+  (rent?'<div class="f"><label>'+L('دورية الدفعات','Instalment frequency')+'</label><div class="pick">'+
+    FREQ.map(function(x){return '<button class="pk '+(ctDraft.freq===x[0]?'on':'')+'" onclick="ctDraft.freq=\''+x[0]+'\';contractSheet(\''+dealId+'\')">'+bi(x)+'</button>';}).join('')+'</div></div>'
+   :'<div class="f"><label>'+L('العربون (اتركه صفرًا لدفعة واحدة)','Deposit (zero for a single payment)')+'</label><input id="ctdep" type="number" value="0"></div>')+
+  '<div class="note">'+L('يُقفل العقار عن المطابقة فور تفعيل العقد، ويعود إليها تلقائيًا عند انتهائه.',
+    'The property leaves matching the moment the contract activates, and returns automatically when it ends.')+'</div>'+
+  '<button class="btn" onclick="createContract(\''+dealId+'\')">'+L('تفعيل العقد وتوليد الدفعات','Activate and generate the schedule')+'</button>');
+}
+function createContract(dealId){
+  var d=dealOf(dealId),m=Repo.find('mandates',d.mandate_id);
+  var kind=ctDraft.kind,rent=kind!=='بيع';
+  var start=val('ctst')||todayStr(),months=+val('ctmo')||(rent?12:1),total=+val('cttot')||d.value;
+  if(!total){toast(L('أدخل قيمة العقد','Enter the contract value'));return;}
+  var yr=new Date().getFullYear();
+  var no=(rent?'L-':'S-')+yr+'-'+String(Repo.all('contracts').length+101);
+  var ct=Repo.insert('contracts',{no:no,kind:kind,deal_id:dealId,mandate_id:d.mandate_id,
+    asset_id:m?m.asset_id:null,contact_id:d.contact_id,start:start,end:addMonths(start,months),
+    total:total,freq:rent?ctDraft.freq:'—',status:'نشط'});
+  if(rent){
+    var n=Math.max(1,Math.round(months/12*freqN(ctDraft.freq))),each=Math.round(total/n);
+    for(var i=0;i<n;i++)Repo.insert('payments',{contract_id:ct.id,no:i+1,kind:'إيجار',
+      due:addMonths(start,Math.round(i*months/n)),amount:i===n-1?total-each*(n-1):each,paid:0});
+  }else{
+    var dep=+val('ctdep')||0;
+    if(dep>0&&dep<total){
+      Repo.insert('payments',{contract_id:ct.id,no:1,kind:'عربون',due:start,amount:dep,paid:0});
+      Repo.insert('payments',{contract_id:ct.id,no:2,kind:'باقي الثمن',due:addMonths(start,months),amount:total-dep,paid:0});
+    }else Repo.insert('payments',{contract_id:ct.id,no:1,kind:'ثمن البيع',due:addMonths(start,months),amount:total,paid:0});
+  }
+  if(m)setState(m.id,rent?'مؤجر':'مباع',no);
+  var c=Repo.find('contacts',d.contact_id);
+  if(c&&c.role==='باحث')Repo.update('contacts',c.id,{role:rent?'مستأجر':'مشترٍ'});
+  advance(dealId,'عقد');
+  Repo.insert('tasks',{title_ar:'متابعة بداية العقد '+no,due:addMonths(start,0),
+    assigned_to:d.owner_user||Session.user.id,status:'open',entity:'contract',entity_id:ct.id});
+  logAct('contract',ct.id,'activated','فُعِّل العقد '+no+' وتوّلد جدول الدفعات','Contract '+no+' activated');
+  notify('عقد جديد '+no+' — يبدأ التحصيل','New contract '+no+' — collection starts','info');
+  runChecks();
+  closeSheet();go('money',1);toast(L('فُعِّل العقد وتوّلدت الدفعات','Contract activated, schedule generated'));
+}
+function contractPayments(ctId){return Repo.where('payments',function(p){return p.contract_id===ctId;})
+  .sort(function(a,b){return a.no-b.no;});}
+function ctCollected(ctId){return contractPayments(ctId).reduce(function(s,p){return s+(p.paid||0);},0);}
+function ctArrears(ctId){return contractPayments(ctId).reduce(function(s,p){
+  return s+(payState(p)==='متأخر'?(p.amount-(p.paid||0)):0);},0);}
+function daysLeft(ct){return daysBetween(ct.end,new Date());}
+
+function renewSheet(ctId){
+  var ct=Repo.find('contracts',ctId),c=contactOf(ct.contact_id);
+  sheet('<h3>'+L('تجديد العقد','Renew the contract')+'</h3>'+
+  '<div class="sub">'+esc(ct.no)+' · '+esc(c.name_ar)+'</div>'+
+  '<div class="two"><div class="f"><label>'+L('البداية الجديدة','New start')+'</label>'+
+  '<input id="rnst" type="date" value="'+addMonths(ct.end,0)+'"></div>'+
+  '<div class="f"><label>'+L('المدة (شهرًا)','Term (months)')+'</label><input id="rnmo" type="number" value="12"></div></div>'+
+  '<div class="f"><label>'+L('القيمة الجديدة','New value')+'</label><input id="rntot" type="number" value="'+ct.total+'"></div>'+
+  '<div class="f"><label>'+L('عمولة التجديد %  (اتركها صفرًا إن لم تُحتسب)','Renewal commission % (zero if none)')+'</label>'+
+  '<input id="rnrate" type="number" step="0.1" value="0"></div>'+
+  '<div class="note">'+L('العقد القديم يُحفظ كما هو ويُوسم «مجدد» — لا يُعدَّل ولا يُحذف.',
+   'The old contract is kept and marked renewed — never edited, never deleted.')+'</div>'+
+  '<button class="btn" onclick="doRenew(\''+ctId+'\')">'+L('تجديد','Renew')+'</button>');
+}
+function doRenew(ctId){
+  var old=Repo.find('contracts',ctId);
+  var start=val('rnst')||todayStr(),months=+val('rnmo')||12,total=+val('rntot')||old.total,rate=+val('rnrate')||0;
+  var no=old.no+'-R'+String((old.renew_gen||0)+1);
+  var ct=Repo.insert('contracts',{no:no,kind:old.kind,deal_id:old.deal_id,mandate_id:old.mandate_id,
+    asset_id:old.asset_id,contact_id:old.contact_id,start:start,end:addMonths(start,months),
+    total:total,freq:old.freq,status:'نشط',renewed_from:ctId,renew_gen:(old.renew_gen||0)+1});
+  var n=Math.max(1,Math.round(months/12*freqN(old.freq))),each=Math.round(total/n);
+  for(var i=0;i<n;i++)Repo.insert('payments',{contract_id:ct.id,no:i+1,kind:'إيجار',
+    due:addMonths(start,Math.round(i*months/n)),amount:i===n-1?total-each*(n-1):each,paid:0});
+  Repo.update('contracts',ctId,{status:'مجدد',renewed_to:ct.id,ended_at:nowISO()});
+  if(rate>0)Repo.insert('commissions',{who:L('المكتب','Office'),kind:'renewal',beneficiary:Session.user.id,
+    basis:total,rate:rate,amount:Math.round(total*rate/100),reason:'عمولة تجديد — '+no,contract_id:ct.id});
+  logAct('contract',ct.id,'renewed','تجديد العقد '+old.no+' ← '+no,'Renewed '+old.no+' → '+no);
+  notify('جُدّد العقد '+no,'Contract renewed '+no,'info');
+  runChecks();closeSheet();go('money',1);toast(L('جُدّد العقد','Renewed'));
+}
+function endContract(ctId){
+  var ct=Repo.find('contracts',ctId);
+  sheet('<h3>'+L('إنهاء العقد','End the contract')+'</h3><div class="sub">'+esc(ct.no)+'</div>'+
+  '<div class="note">'+L('يعود العقار للمطابقة فورًا، وتبقى الدفعات المتأخرة مستحقة في التحصيل.',
+   'The property returns to matching immediately; unpaid instalments remain due in Collections.')+'</div>'+
+  '<div class="pick">'+[['انتهت المدة','Term ended'],['إخلاء','Vacated'],['فسخ','Terminated']].map(function(r){
+    return '<button class="pk a" onclick="doEnd(\''+ctId+'\',\''+r[0]+'\')">'+bi(r)+'</button>';}).join('')+'</div>');
+}
+function doEnd(ctId,reason){
+  var ct=Repo.find('contracts',ctId);
+  Repo.update('contracts',ctId,{status:'منتهٍ',end_reason:reason,ended_at:nowISO()});
+  if(ct.mandate_id)setState(ct.mandate_id,'متاح',reason);
+  logAct('contract',ctId,'ended','انتهى العقد '+ct.no+' — '+reason,'Contract ended: '+reason);
+  notify('انتهى العقد '+ct.no+' — العقار عاد للمطابقة','Contract ended — property back in matching','info');
+  closeSheet();render();toast(L('انتهى العقد وعاد العقار للمطابقة','Ended — property back in matching'));
+}
+
+/* ── الدفعات: سداد كامل أو جزئي ──────────────────────────────── */
+function payRemain(p){return Math.max(0,p.amount-(p.paid||0));}
+function paySheet(id){
+  var p=Repo.find('payments',id),ct=Repo.find('contracts',p.contract_id),c=contactOf(ct.contact_id);
+  sheet('<h3>'+L('تسجيل سداد','Record a payment')+'</h3>'+
+  '<div class="sub">'+esc(c.name_ar)+' · '+esc(ct.no)+' · '+L('دفعة','instalment')+' '+p.no+'</div>'+
+  '<div class="grid2"><div class="m"><div class="t">'+L('قيمة الدفعة','Instalment')+'</div><div class="v num">'+M(p.amount)+'</div></div>'+
+  '<div class="m a"><div class="t">'+L('المتبقي','Remaining')+'</div><div class="v num">'+M(payRemain(p))+'</div></div></div>'+
+  '<div class="f"><label>'+L('المبلغ المستلم','Amount received')+'</label>'+
+  '<input id="pya" type="number" inputmode="numeric" value="'+payRemain(p)+'"></div>'+
+  '<div class="f"><label>'+L('الطريقة','Method')+'</label><div class="pick">'+
+  [['تحويل','Transfer'],['شبكة','Card'],['نقدًا','Cash'],['شيك','Cheque']].map(function(x,i){
+    return '<button class="pk '+(i===0?'on':'')+'" onclick="pyM=\''+x[0]+'\';var b=this.parentNode.children;for(var j=0;j<b.length;j++)b[j].className=\'pk\';this.className=\'pk on\'">'+bi(x)+'</button>';}).join('')+'</div></div>'+
+  '<button class="btn" onclick="savePay(\''+id+'\')">'+t('save')+'</button>');
+}
+var pyM='تحويل';
+function savePay(id){
+  if(!guard('payment.record')&&!guard('payment.*'))return;
+  var p=Repo.find('payments',id),amt=+val('pya');
+  if(!amt||amt<=0){toast(L('أدخل المبلغ','Enter an amount'));return;}
+  var paid=Math.min(p.amount,(p.paid||0)+amt),full=paid>=p.amount;
+  Repo.update('payments',id,{paid:paid,method:pyM,last_paid_at:nowISO(),
+    paid_at:full?nowISO():null,receipt:'R-'+new Date().getFullYear()+'-'+String(Repo.all('payments').filter(function(x){return x.paid;}).length+1)});
+  var ct=Repo.find('contracts',p.contract_id),c=contactOf(ct.contact_id);
+  logAct('payment',id,'recorded','سداد '+M(amt)+' على العقد '+ct.no+(full?' — مكتمل':' — جزئي'),'Payment '+amt);
+  if(!full)notify('سداد جزئي على '+ct.no+' — متبقٍ '+M(payRemain(Repo.find('payments',id))),
+    'Partial payment on '+ct.no,'alert');
+  var tx=full?('تم استلام السداد كاملًا\nرقم العقد: '+ct.no+'\nالدفعة: '+p.no+'\nالمبلغ: '+M(paid)+' ريال\nشكرًا لالتزامكم\n'+Session.office.name_ar)
+    :('تم استلام دفعة جزئية\nرقم العقد: '+ct.no+'\nالمستلم: '+M(amt)+' ريال\nالمتبقي: '+M(p.amount-paid)+' ريال\n'+Session.office.name_ar);
+  runChecks();render();
+  sheet('<h3>'+(full?L('سُجّل السداد كاملًا','Paid in full'):L('سُجّل سداد جزئي','Partial payment'))+'</h3>'+
+  '<div class="sub">'+L('التأكيد يُرسل بنص معتمد فقط','Confirmation uses approved wording only')+'</div>'+
+  '<div class="bubble">'+esc(tx)+'</div>'+
+  '<button class="btn" onclick="send(\''+c.phone+'\','+JSON.stringify(tx)+')">'+t('send')+'</button>'+
+  '<button class="btn g" onclick="closeSheet()">'+t('close')+'</button>');
+}
+
+/* ── إدارة الأملاك: صيانة ← مصروف ← مستحقات المالك ─────────────── */
+var sDraft={trade:'تكييف',payer:'المالك'};
+function serviceSheet(assetId){
+  var a=Repo.find('assets',assetId)||{};
+  sheet('<h3>'+L('طلب صيانة','Maintenance request')+'</h3>'+
+  '<div class="sub">'+esc(a.type||'')+' — '+esc(a.hood||'')+'</div>'+
+  '<div class="f"><label>'+L('الوصف','Description')+'</label><input id="svt" placeholder="'+L('تسريب في المطبخ','leak in the kitchen')+'"></div>'+
+  '<div class="f"><label>'+L('التخصص','Trade')+'</label><div class="pick">'+TRADES.map(function(x){
+    return '<button class="pk '+(sDraft.trade===x[0]?'on':'')+'" onclick="sDraft.trade=\''+x[0]+'\';serviceSheet(\''+assetId+'\')">'+bi(x)+'</button>';}).join('')+'</div></div>'+
+  '<div class="f"><label>'+L('على حساب','Charged to')+'</label><div class="pick">'+
+  [['المالك',L('المالك','Owner')],['المستأجر',L('المستأجر','Tenant')],['المكتب',L('المكتب','Office')]].map(function(x){
+    return '<button class="pk '+(sDraft.payer===x[0]?'on':'')+'" onclick="sDraft.payer=\''+x[0]+'\';serviceSheet(\''+assetId+'\')">'+x[1]+'</button>';}).join('')+'</div></div>'+
+  '<button class="btn" onclick="saveService(\''+assetId+'\')">'+t('save')+'</button>');
+}
+function saveService(assetId){
+  if(!val('svt')){toast(L('اكتب الوصف','Describe the request'));return;}
+  var m=Repo.where('mandates',function(x){return x.asset_id===assetId&&x.purpose==='إدارة أملاك';})[0];
+  var s=Repo.insert('services',{asset_id:assetId,mandate_id:m?m.id:null,title:val('svt'),
+    trade:sDraft.trade,payer:sDraft.payer,status:'جديد',cost:0});
+  logAct('service',s.id,'created','طلب صيانة: '+s.title,'Maintenance request');
+  notify('طلب صيانة جديد — '+s.title,'New maintenance request','alert');
+  closeSheet();go('srv',1);toast(L('سُجّل الطلب','Recorded'));
+}
+function completeService(id){
+  var s=Repo.find('services',id);
+  sheet('<h3>'+L('إقفال طلب الصيانة','Close the request')+'</h3><div class="sub">'+esc(s.title)+'</div>'+
+  '<div class="f"><label>'+L('التكلفة الفعلية','Actual cost')+'</label><input id="svc" type="number" inputmode="numeric"></div>'+
+  '<div class="note">'+L('التكلفة تُقيَّد مصروفًا على '+s.payer+' وتدخل حساب المالك تلقائيًا.',
+   'The cost is posted as an expense charged to '+s.payer+' and flows into the owner statement.')+'</div>'+
+  '<button class="btn" onclick="doCompleteService(\''+id+'\')">'+L('إقفال وتقييد المصروف','Close and post the expense')+'</button>');
+}
+function doCompleteService(id){
+  var s=Repo.find('services',id),cost=+val('svc')||0;
+  Repo.update('services',id,{status:'منجز',cost:cost,done_at:nowISO()});
+  if(cost>0)Repo.insert('expenses',{asset_id:s.asset_id,service_id:id,category:'صيانة',amount:cost,
+    payer:s.payer,date:todayStr(),note:s.title,status:'مستحق'});
+  if(s.provider_id){var p=Repo.find('providers',s.provider_id);
+    if(p)Repo.update('providers',s.provider_id,{jobs:(p.jobs||0)+1});}
+  logAct('service',id,'completed','أُنجز طلب الصيانة — '+M(cost)+' ريال','Service completed');
+  closeSheet();render();toast(L('أُقفل الطلب وقُيّد المصروف','Closed and posted'));
+}
+var eDraft={cat:'صيانة',payer:'المالك'};
+function expenseSheet(assetId){
+  var a=Repo.find('assets',assetId)||{};
+  sheet('<h3>'+L('تسجيل مصروف','Record an expense')+'</h3>'+
+  '<div class="sub">'+esc(a.type||'')+' — '+esc(a.hood||'')+'</div>'+
+  '<div class="f"><label>'+L('البند','Category')+'</label><div class="pick">'+EXPCATS.map(function(x){
+    return '<button class="pk '+(eDraft.cat===x[0]?'on':'')+'" onclick="eDraft.cat=\''+x[0]+'\';expenseSheet(\''+assetId+'\')">'+bi(x)+'</button>';}).join('')+'</div></div>'+
+  '<div class="two"><div class="f"><label>'+L('المبلغ','Amount')+'</label><input id="exa" type="number" inputmode="numeric"></div>'+
+  '<div class="f"><label>'+L('التاريخ','Date')+'</label><input id="exd" type="date" value="'+todayStr()+'"></div></div>'+
+  '<div class="f"><label>'+L('على حساب','Charged to')+'</label><div class="pick">'+
+  [['المالك',L('المالك','Owner')],['المستأجر',L('المستأجر','Tenant')],['المكتب',L('المكتب','Office')]].map(function(x){
+    return '<button class="pk '+(eDraft.payer===x[0]?'on':'')+'" onclick="eDraft.payer=\''+x[0]+'\';expenseSheet(\''+assetId+'\')">'+x[1]+'</button>';}).join('')+'</div></div>'+
+  '<div class="f"><label>'+L('ملاحظة','Note')+'</label><input id="exn"></div>'+
+  '<button class="btn" onclick="saveExpense(\''+assetId+'\')">'+t('save')+'</button>');
+}
+function saveExpense(assetId){
+  var amt=+val('exa'); if(!amt){toast(L('أدخل المبلغ','Enter an amount'));return;}
+  var x=Repo.insert('expenses',{asset_id:assetId,category:eDraft.cat,amount:amt,payer:eDraft.payer,
+    date:val('exd')||todayStr(),note:val('exn')||'',status:'مستحق'});
+  logAct('expense',x.id,'created','مصروف '+eDraft.cat+' '+M(amt)+' على '+eDraft.payer,'Expense recorded');
+  closeSheet();go('srv',2);toast(t('saved'));
+}
+function expensesOf(assetId){return Repo.where('expenses',function(x){return x.asset_id===assetId;});}
+
+/* كشف حساب المالك — دفتر لا يُعدَّل: استحقاق ثم سداد */
+function assetContracts(assetId){return Repo.where('contracts',function(c){return c.asset_id===assetId;});}
+function ownerBook(assetId){
+  var m=Repo.where('mandates',function(x){return x.asset_id===assetId&&x.purpose==='إدارة أملاك';})[0];
+  var fee=m&&m.mgmt_fee!==undefined?m.mgmt_fee:5;
+  var collected=0;
+  assetContracts(assetId).forEach(function(c){collected+=ctCollected(c.id);});
+  var exp=expensesOf(assetId).filter(function(x){return x.payer==='المالك';})
+    .reduce(function(s,x){return s+x.amount;},0);
+  var mgmt=Math.round(collected*fee/100);
+  var earned=collected-exp-mgmt;
+  var book=Repo.where('settlements',function(s){return s.asset_id===assetId;});
+  var issued=book.filter(function(s){return s.type==='استحقاق';}).reduce(function(s,x){return s+x.amount;},0);
+  var paid=book.filter(function(s){return s.type==='سداد';}).reduce(function(s,x){return s+x.amount;},0);
+  return {mandate:m,fee:fee,collected:collected,expenses:exp,mgmt:mgmt,earned:earned,
+    issued:issued,paid:paid,unissued:earned-issued,balance:issued-paid,book:book};
+}
+function ownerStatement(assetId){
+  var b=ownerBook(assetId),a=Repo.find('assets',assetId)||{},o=contactOf(a.owner_id);
+  var lines=['كشف حساب مالك',(a.type||'')+' — '+(a.hood||''),'',
+    'إجمالي المحصَّل: '+M(b.collected)+' ريال',
+    'مصروفات على المالك: '+M(b.expenses)+' ريال',
+    'أتعاب الإدارة ('+b.fee+'%): '+M(b.mgmt)+' ريال','',
+    'صافي المستحق للمالك: '+M(b.earned)+' ريال',
+    'سبق تحويله: '+M(b.paid)+' ريال',
+    'الرصيد القائم: '+M(b.earned-b.paid)+' ريال','',Session.office.name_ar];
+  var tx=lines.join('\n');
+  logAct('asset',assetId,'statement','كشف حساب للمالك '+o.name_ar,'Owner statement prepared');
+  sheet('<h3>'+L('كشف حساب المالك','Owner statement')+'</h3><div class="sub">'+esc(o.name_ar)+'</div>'+
+  '<div class="bubble">'+esc(tx)+'</div>'+
+  '<div class="note" style="margin-top:11px">'+L('الكشف قيد لا يُعدَّل — التصحيح بقيد جديد، تمامًا كسجل العمولات.',
+   'A statement is an entry, not a field: corrections are new entries, exactly like the commission ledger.')+'</div>'+
+  (b.unissued>0?'<button class="btn" onclick="issueSettlement(\''+assetId+'\','+b.unissued+')">'+
+    L('إصدار استحقاق بـ ','Issue ')+M(b.unissued)+'</button>':'')+
+  (b.balance>0?'<button class="btn o" onclick="paySettlement(\''+assetId+'\','+b.balance+')">'+
+    L('تسجيل تحويل بـ ','Record a transfer of ')+M(b.balance)+'</button>':'')+
+  '<button class="btn g" onclick="send(\''+(o.phone||'')+'\','+JSON.stringify(tx)+')">'+t('send')+'</button>');
+}
+function issueSettlement(assetId,amt){
+  var a=Repo.find('assets',assetId)||{};
+  Repo.insert('settlements',{asset_id:assetId,owner_id:a.owner_id,type:'استحقاق',amount:amt,
+    period_to:todayStr(),note:'استحقاق دوري'});
+  logAct('asset',assetId,'settlement','إصدار استحقاق للمالك '+M(amt),'Settlement issued');
+  closeSheet();render();toast(L('صدر الاستحقاق','Issued'));
+}
+function paySettlement(assetId,amt){
+  var a=Repo.find('assets',assetId)||{};
+  Repo.insert('settlements',{asset_id:assetId,owner_id:a.owner_id,type:'سداد',amount:amt,
+    period_to:todayStr(),note:'تحويل للمالك'});
+  logAct('asset',assetId,'settlement_paid','تحويل للمالك '+M(amt),'Owner paid');
+  closeSheet();render();toast(L('سُجّل التحويل','Transfer recorded'));
+}
+
+/* ── المستندات والصور ────────────────────────────────────────── */
+function docsOf(e,id){return Repo.where('documents',function(d){return d.entity===e&&d.entity_id===id;});}
+function docLabel(e){return {asset:L('العقار','Property'),contract:L('العقد','Contract'),
+  deal:L('الصفقة','Deal'),contact:L('العميل','Contact'),service:L('الصيانة','Service')}[e]||e;}
+var dDraft={kind:'صورة'};
+function docSheet(e,id){
+  var list=docsOf(e,id);
+  sheet('<h3>'+L('المستندات','Documents')+'</h3><div class="sub">'+docLabel(e)+'</div>'+
+  '<div class="f"><label>'+L('النوع','Kind')+'</label><div class="pick">'+DOCKINDS.map(function(x){
+    return '<button class="pk '+(dDraft.kind===x[0]?'on':'')+'" onclick="dDraft.kind=\''+x[0]+'\';docSheet(\''+e+'\',\''+id+'\')">'+bi(x)+'</button>';}).join('')+'</div></div>'+
+  '<label class="photo">'+L('إرفاق ملف أو صورة','Attach a file or photo')+
+  '<input type="file" accept="image/*,application/pdf" style="display:none" onchange="pickDoc(this,\''+e+'\',\''+id+'\')"></label>'+
+  '<div class="sec">'+L('المرفقات','Attached')+' <b>'+list.length+'</b></div>'+
+  (list.length?list.map(function(d){
+    return '<div class="r"><div class="ic g">'+(String(d.mime||'').indexOf('image')===0?'🖼':'📄')+'</div>'+
+    '<div class="rm"><div class="rt">'+esc(d.name)+'</div>'+
+    '<div class="rs">'+esc(d.kind)+' · <span class="num">'+Math.round((d.size||0)/1024)+'</span> KB · '+esc(userName(d.by))+'</div></div>'+
+    '<div class="rv"><button class="btn s g" onclick="openDoc(\''+d.id+'\')">'+L('فتح','Open')+'</button>'+
+    '<button class="btn s g" onclick="delDoc(\''+d.id+'\',\''+e+'\',\''+id+'\')" style="margin-top:4px">'+L('حذف','Delete')+'</button></div></div>';}).join('')
+   :'<div class="empty">'+t('nothing')+'</div>'));
+}
+function shrink(file,cb){
+  if(String(file.type).indexOf('image')!==0){
+    if(file.size>900*1024){toast(L('الملف كبير — أقصى ٩٠٠ كيلوبايت','File too large — 900 KB max'));return;}
+    var r0=new FileReader();r0.onload=function(ev){cb(ev.target.result);};r0.readAsDataURL(file);return;}
+  var r=new FileReader();
+  r.onload=function(ev){var img=new Image();
+    img.onload=function(){var max=1100,s=Math.min(1,max/Math.max(img.width,img.height));
+      var cv=document.createElement('canvas');cv.width=Math.round(img.width*s);cv.height=Math.round(img.height*s);
+      cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
+      cb(cv.toDataURL('image/jpeg',0.72));};
+    img.onerror=function(){cb(ev.target.result);};
+    img.src=ev.target.result;};
+  r.readAsDataURL(file);
+}
+function pickDoc(input,e,id){
+  var f=input.files&&input.files[0]; if(!f)return;
+  shrink(f,function(data){
+    var d=Repo.insert('documents',{entity:e,entity_id:id,name:f.name,kind:dDraft.kind,
+      mime:f.type,size:Math.round(data.length*0.75),data:data,by:Session.user.id});
+    if(e==='asset'){var a=Repo.find('assets',id);
+      if(a&&String(f.type).indexOf('image')===0){var ph=(a.photos||[]).slice();ph.push(data);
+        Repo.update('assets',id,{photos:ph,photo:a.photo||data});}}
+    logAct(e,id,'document','أُرفق مستند: '+f.name,'Document attached');
+    docSheet(e,id);toast(t('saved'));
+  });
+}
+function openDoc(id){var d=Repo.find('documents',id);var w=window.open();
+  if(!w){toast(L('اسمح بالنوافذ المنبثقة','Allow pop-ups'));return;}
+  w.document.write(String(d.mime||'').indexOf('image')===0
+    ?'<img src="'+d.data+'" style="max-width:100%">':'<iframe src="'+d.data+'" style="border:0;width:100%;height:100vh"></iframe>');}
+function delDoc(id,e,eid){Repo.remove('documents',id);logAct(e,eid,'document_removed','حُذف مستند','Document removed');docSheet(e,eid);}
+function storageKB(){try{return Math.round(JSON.stringify(DB).length/1024);}catch(x){return 0;}}
+
+/* ── سجل النشاط لكل كيان ─────────────────────────────────────── */
+function timelineBlock(entity,id){
+  var acts=Repo.all('activity').filter(function(a){return a.entity===entity&&a.entity_id===id;});
+  if(!acts.length)return '';
+  return '<div class="sec">'+L('سجل هذا العنصر','This record’s history')+' <b>'+acts.length+'</b></div>'+
+  '<div class="tl">'+acts.slice().reverse().slice(0,12).map(function(a){
+    return '<div class="e"><div class="rs wrap" style="color:var(--ink);font-weight:600">'+
+    esc(LANG==='en'?a.summary_en:a.summary_ar)+'</div>'+
+    '<div class="rs num">'+esc(a.actor)+' · '+String(a.created_at).slice(0,16).replace('T',' ')+'</div></div>';}).join('')+'</div>';
+}
+
+/* ── محرّك التنبيهات: مشتق من البيانات لا مكتوب يدويًا ─────────── */
+function pushNotif(key,ar,en,kind){
+  if(Repo.where('notifications',function(n){return n.key===key;}).length)return false;
+  DB.notifications.push({id:uid(),office_id:Session.office&&Session.office.id,key:key,
+    text_ar:ar,text_en:en||ar,kind:kind||'info',read:false,created_at:nowISO()});
+  return true;
+}
+function pushTask(key,title,due,who,entity,eid){
+  if(Repo.where('tasks',function(x){return x.key===key;}).length)return;
+  DB.tasks.push({id:uid(),office_id:Session.office&&Session.office.id,key:key,title_ar:title,
+    due:due,assigned_to:who||(Session.user&&Session.user.id),status:'open',
+    entity:entity,entity_id:eid,created_at:nowISO()});
+}
+function runChecks(){
+  if(!Session.user||!Session.office)return;
+  var wk=weekKey();
+  /* متأخرات */
+  Repo.all('payments').forEach(function(p){
+    if(payState(p)!=='متأخر')return;
+    var ct=Repo.find('contracts',p.contract_id); if(!ct)return;
+    var c=contactOf(ct.contact_id);
+    pushNotif('pay:'+p.id+':'+wk,'متأخر: '+c.name_ar+' — '+M(payRemain(p))+' ريال على '+ct.no,
+      'Overdue: '+M(payRemain(p))+' on '+ct.no,'alert');
+  });
+  /* عقود على وشك الانتهاء */
+  Repo.where('contracts',function(c){return c.status==='نشط';}).forEach(function(ct){
+    var dl=daysLeft(ct);
+    if(dl<0){pushNotif('exp:'+ct.id,'انتهت مدة العقد '+ct.no+' — جدّده أو أنهه',
+      'Contract '+ct.no+' term has ended','alert');return;}
+    if(dl<=60)pushNotif('exp60:'+ct.id,'العقد '+ct.no+' ينتهي بعد '+dl+' يومًا — ابدأ التجديد',
+      'Contract '+ct.no+' expires in '+dl+' days','alert');
+    if(dl<=60)pushTask('exp60t:'+ct.id,'التفاوض على تجديد العقد '+ct.no,addMonths(ct.end,-2),null,'contract',ct.id);
+  });
+  /* معاينات الغد */
+  Repo.where('viewings',function(v){return v.status==='مجدولة';}).forEach(function(v){
+    var h=(new Date(v.when)-new Date())/36e5;
+    if(h>0&&h<=24){var m=Repo.find('mandates',v.mandate_id);
+      pushNotif('vw:'+v.id,'معاينة خلال ٢٤ ساعة — '+(m?mandateTitle(m):''),'Viewing within 24h','alert');}
+    if(h<0)pushTask('vwt:'+v.id,'تسجيل نتيجة المعاينة',todayStr(),v.by,'viewing',v.id);
+  });
+  /* وعود تجاوزت المهلة */
+  Repo.where('requirements',function(r){return r.status==='active';}).forEach(function(r){
+    if(slaState(r)==='breached')pushNotif('sla:'+r.id+':'+wk,
+      'تجاوز مهلة الرد — '+contactOf(r.contact_id).name_ar,'Reply window breached','alert');
+  });
+  /* مستحقات مالك لم تُصرف */
+  managedMandates().forEach(function(m){
+    var b=ownerBook(m.asset_id);
+    if(b.earned-b.paid>0)pushNotif('own:'+m.asset_id+':'+wk,
+      'مستحق للمالك '+M(b.earned-b.paid)+' ريال — جهّز الكشف','Owner dues pending','info');
+  });
+  Repo.flush();
+}
 
 /* ════════════════════════════════════════════════════════════════
    12 · ACTIONS
@@ -1211,10 +1997,25 @@ function quickAdd(){
   if(can('contact.create'))items.push([t('qa_req'),'reqSheet','☰']);
   if(can('enquiry.create')||can('enquiry.*'))items.push([t('qa_enq'),'enqSheet','✆']);
   if(can('deal.view')||can('deal.*'))items.push([t('qa_view'),'pickMandate','📅']);
+  if(managedMandates().length){
+    items.push([L('طلب صيانة','Maintenance'),'pickManaged','⚒']);
+    items.push([L('مصروف','Expense'),'pickManagedExp','−']);
+  }
   items.push([t('qa_task'),'taskSheet','✓']);
   sheet('<h3>'+t('quick_add')+'</h3><div class="sub">'+L('ماذا تريد أن تسجّل الآن؟','What do you want to record?')+'</div>'+
   items.map(function(x){return '<button class="r" onclick="'+x[1]+'()"><div class="ic g">'+x[2]+'</div>'+
    '<div class="rm"><div class="rt">'+x[0]+'</div></div><div class="rv">›</div></button>';}).join(''));
+}
+
+function pickManaged(){pickManagedAny('serviceSheet',L('طلب صيانة','Maintenance request'));}
+function pickManagedExp(){pickManagedAny('expenseSheet',L('تسجيل مصروف','Record an expense'));}
+function pickManagedAny(fn,title){
+  var ms=managedMandates();
+  if(!ms.length){toast(L('لا يوجد عقار تحت الإدارة','No managed property'));return;}
+  sheet('<h3>'+title+'</h3><div class="sub">'+L('اختر العقار','Choose the property')+'</div>'+
+  ms.map(function(m){var a=asset(m);
+    return '<button class="r" onclick="'+fn+'(\''+a.id+'\')"><div class="ic">'+(ICONS[a.type]||'🏠')+'</div>'+
+    '<div class="rm"><div class="rt">'+mandateTitle(m)+'</div></div><div class="rv">›</div></button>';}).join(''));
 }
 
 function propSheet(){
@@ -1225,8 +2026,10 @@ function propSheet(){
     return '<button class="pk '+(draft.source===k?'on':'')+'" onclick="draft.source=\''+k+'\';propSheet()">'+bi(SOURCES[k])+'</button>';}).join('')+'</div></div>'+
   '<div class="f"><label>'+t('type')+'</label><div class="pick">'+TYPES.slice(0,7).map(function(x){
     return '<button class="pk '+(draft.type===x[0]?'on':'')+'" onclick="draft.type=\''+x[0]+'\';propSheet()">'+bi(x)+'</button>';}).join('')+'</div></div>'+
-  '<div class="f"><label>'+L('الغرض','Purpose')+'</label><div class="pick">'+[['إيجار',t('rent')],['بيع',t('sale')]].map(function(x){
-    return '<button class="pk '+(draft.purpose===x[0]?'on':'')+'" onclick="draft.purpose=\''+x[0]+'\';propSheet()">'+x[1]+'</button>';}).join('')+'</div></div>'+
+  '<div class="f"><label>'+L('الغرض','Purpose')+'</label><div class="pick">'+PURPOSES.map(function(x){
+    return '<button class="pk '+(draft.purpose===x[0]?'on':'')+'" onclick="draft.purpose=\''+x[0]+'\';propSheet()">'+bi(x)+'</button>';}).join('')+'</div></div>'+
+  (draft.purpose==='إدارة أملاك'?'<div class="f"><label>'+L('أتعاب الإدارة % من المحصَّل','Management fee % of collections')+
+    '</label><input id="mgf" type="number" step="0.5" value="5"></div>':'')+
   '<div class="f"><label>'+t('district')+'</label><select onchange="draft.hood=this.value"><option value="">—</option>'+
    HOODS.map(function(x){return '<option value="'+x[0]+'" '+(draft.hood===x[0]?'selected':'')+'>'+bi(x)+'</option>';}).join('')+'</select></div>'+
   '<div class="two"><div class="f"><label>'+t('rooms')+'</label><input id="beds" type="number" inputmode="numeric"></div>'+
@@ -1257,9 +2060,11 @@ function saveProp(){
     ownerId=ex?ex.id:Repo.insert('contacts',{name_ar:val('own1'),phone:ph,role:'مالك',assigned_to:Session.user.id}).id;
   }
   var a=Repo.insert('assets',{type:draft.type,hood:draft.hood,beds:+val('beds')||0,
-    baths:+val('baths')||0,area:+val('area')||0,owner_id:ownerId,photo:draft.photo});
+    baths:+val('baths')||0,area:+val('area')||0,owner_id:ownerId,photo:draft.photo,
+    photos:draft.photo?[draft.photo]:[]});
   var m=Repo.insert('mandates',{asset_id:a.id,purpose:draft.purpose,price:price,source:draft.source,
-    status:isMarketer()?'بانتظار الاعتماد':'معتمد',by:Session.user.id,channels:[],
+    status:isMarketer()?'بانتظار الاعتماد':'معتمد',state:'متاح',by:Session.user.id,channels:[],
+    mgmt_fee:draft.purpose==='إدارة أملاك'?(+val('mgf')||5):undefined,
     partner:draft.source==='partner'?val('own1'):null,split:+val('split')||null});
   logAct('mandate',m.id,'created','أُضيف عرض: '+draft.type+' — '+draft.hood,'Listing added');
   if(isMarketer())notify('عرض جديد من مسوّق ينتظر الاعتماد','New marketer listing awaiting approval','alert');
@@ -1363,41 +2168,136 @@ function togChan(id,c){var m=Repo.find('mandates',id);var ch=(m.channels||[]).sl
   var i=ch.indexOf(c);if(i>-1)ch.splice(i,1);else ch.push(c);
   Repo.update('mandates',id,{channels:ch});publishSheet(id);}
 
-function startDeal(mid,cid){
-  if(!guard('deal.view')&&!guard('deal.*'))return;
-  if(Repo.where('deals',function(d){return d.mandate_id===mid&&d.contact_id===cid;}).length){
-    toast(L('توجد صفقة مفتوحة لهذا العميل على نفس العرض','An open deal already exists'));return;}
-  var m=Repo.find('mandates',mid);
-  var d=Repo.insert('deals',{mandate_id:mid,contact_id:cid,stage:'اهتمام',value:m.price,
-    owner_user:Session.user.id,stage_at:nowISO()});
-  logAct('deal',d.id,'created','فُتحت صفقة','Deal opened');
-  go('deals');toast(L('فُتحت الصفقة','Deal opened'));
+function startDeal(mid,cid,collabId){
+  if(!can('deal.create')&&!can('deal.*')&&!can('deal.view')){toast(t('no_perm'));return;}
+  var m=Repo.find('mandates',mid); if(!m){toast(t('nothing'));return;}
+  if(['متاح','محجوز'].indexOf(mState(m))<0){
+    toast(L('العقار '+mState(m)+' — لا تُفتح عليه صفقة','Property is '+mState(m)));return;}
+  var ex=openDealFor(mid,cid);
+  if(ex){closeSheet();go('deals');dealSheet(ex.id);
+    toast(L('توجد صفقة مفتوحة — فُتحت','Existing deal opened'));return;}
+  var d=Repo.insert('deals',{no:dealNo(),mandate_id:mid,contact_id:cid,purpose:m.purpose,stage:'اهتمام',
+    value:m.price,owner_user:Session.user.id,stage_at:nowISO(),collab_id:collabId||null,
+    marketer_id:isMarketer()?Session.user.id:null});
+  logAct('deal',d.id,'created','فُتحت صفقة '+d.no+' — '+contactOf(cid).name_ar,'Deal '+d.no+' opened');
+  closeSheet();go('deals');dealSheet(d.id);toast(L('فُتحت الصفقة','Deal opened'));
 }
+
+/* لوح الصفقة: الرحلة كلها في مكان واحد بدل تفرّقها على شاشات */
 function dealSheet(id){
-  var d=Repo.find('deals',id),m=Repo.find('mandates',d.mandate_id),c=contactOf(d.contact_id);
-  sheet('<h3>'+esc(c.name_ar)+'</h3><div class="sub">'+(m?mandateTitle(m):'')+' · <span class="num">'+M(d.value)+'</span></div>'+
-  '<div class="f"><label>'+L('المرحلة','Stage')+'</label><div class="pick">'+STAGES.map(function(s){
-    return '<button class="pk '+(d.stage===s[0]?'on':'')+'" onclick="moveDeal(\''+id+'\',\''+s[0]+'\')">'+bi(s)+'</button>';}).join('')+'</div></div>'+
-  '<button class="btn" onclick="winDeal(\''+id+'\')">'+L('إغلاق بنجاح','Close won')+'</button>'+
-  '<button class="btn g" onclick="loseDeal(\''+id+'\')">'+L('إغلاق كخسارة','Close lost')+'</button>');
+  var d=dealOf(id); if(!d)return;
+  var m=Repo.find('mandates',d.mandate_id),c=contactOf(d.contact_id);
+  var vs=dealViewings(id),os=dealOffers(id),ct=dealContract(id),coms=dealCommissions(id);
+  var closed=isClosed(d),cb=d.collab_id?Repo.find('collabs',d.collab_id):null;
+
+  var h='<h3>'+esc(c.name_ar)+' <span class="tag t-n num">'+esc(d.no||'')+'</span></h3>'+
+   '<div class="sub">'+(m?mandateTitle(m):'—')+' · '+esc(d.purpose||'')+
+   ' · <span class="num">'+M(d.value)+'</span> '+t('sar')+
+   (d.agreed?' · <b style="color:var(--jade)">'+L('متفق','agreed')+'</b>':'')+'</div>';
+
+  if(cb)h+='<div class="note">'+L('بالتعاون مع ','In collaboration with ')+esc(cb.from)+
+    (cb.split?' · '+L('حصتهم','their share')+' '+cb.split+'%':'')+'</div>';
+  if(d.marketer_id)h+='<div class="note">'+L('عبر المسوّق ','Via marketer ')+esc(userName(d.marketer_id))+'</div>';
+
+  h+='<div class="f"><label>'+L('المرحلة','Stage')+'</label><div class="pick">'+STAGES.map(function(st){
+    return '<button class="pk '+(d.stage===st[0]?'on':'')+'"'+(closed?' disabled':'')+
+    ' onclick="moveDeal(\''+id+'\',\''+st[0]+'\')">'+bi(st)+'</button>';}).join('')+
+    (closed?'<button class="pk a on">'+esc(d.stage)+'</button>':'')+'</div></div>';
+
+  /* ١ معاينة */
+  h+='<div class="sec">'+L('المعاينات','Viewings')+' <b>'+vs.length+'</b></div>';
+  h+= vs.length? vs.map(function(v){
+      return '<div class="r top"><div class="ic '+(v.status==='تمت'?'g':'w')+'">📅</div><div class="rm">'+
+      '<div class="rt num">'+String(v.when).slice(0,16).replace('T',' ')+'</div>'+
+      (v.interest?'<div class="rs">'+L('رأيه','Interest')+': <b>'+esc(v.interest)+'</b></div>':'')+
+      ((v.obj||[]).length?'<div class="chips">'+v.obj.map(function(o){return '<span class="chip no">'+esc(o)+'</span>';}).join('')+'</div>':'')+
+      (v.status==='مجدولة'?'<div style="margin-top:8px"><button class="btn s" onclick="completeViewing(\''+v.id+'\')">'+
+        L('تسجيل النتيجة','Record outcome')+'</button></div>':'')+
+      '</div><div class="rv"><span class="tag t-'+(v.status==='تمت'?'g':'w')+'">'+esc(v.status)+'</span></div></div>';}).join('')
+    : '<div class="empty" style="padding:14px">'+L('لا معاينة بعد','No viewing yet')+'</div>';
+  if(!closed)h+='<button class="btn s o" onclick="viewingSheet(\''+d.mandate_id+'\',\''+id+'\')">'+
+    L('جدولة معاينة','Schedule a viewing')+'</button>';
+
+  /* ٢ عرض وتفاوض */
+  h+='<div class="sec">'+L('العروض والتفاوض','Offers and negotiation')+' <b>'+os.length+'</b></div>';
+  h+= os.length? os.map(function(o){
+      var cls=o.status==='مقبول'?'g':o.status==='مرفوض'?'a':'w';
+      return '<div class="r top"><div class="ic '+cls+'">'+(o.side==='client'?'👤':'🏠')+'</div><div class="rm">'+
+      '<div class="rt num">'+M(o.amount)+' <span class="rs">'+(o.side==='client'?L('من العميل','client'):L('من المالك','owner'))+'</span></div>'+
+      (o.note?'<div class="rs wrap">'+esc(o.note)+'</div>':'')+
+      '<div class="rs num">'+String(o.created_at).slice(0,10)+'</div>'+
+      (o.status==='مقدم'&&!closed?'<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">'+
+        '<button class="btn s" onclick="respondOffer(\''+o.id+'\',\'مقبول\')">'+L('قبول','Accept')+'</button>'+
+        '<button class="btn s o" onclick="respondOffer(\''+o.id+'\',\'مضاد\')">'+L('عرض مضاد','Counter')+'</button>'+
+        '<button class="btn s g" onclick="respondOffer(\''+o.id+'\',\'مرفوض\')">'+L('رفض','Reject')+'</button></div>':'')+
+      '</div><div class="rv"><span class="tag t-'+cls+'">'+esc(o.status)+'</span></div></div>';}).join('')
+    : '<div class="empty" style="padding:14px">'+L('لم يُقدَّم عرض بعد','No offer yet')+'</div>';
+  if(!closed)h+='<button class="btn s o" onclick="offerSheet(\''+id+'\')">'+L('تسجيل عرض سعر','Record an offer')+'</button>';
+
+  /* ٣ العقد والعمولة */
+  if(ct){
+    h+='<div class="sec">'+L('العقد','Contract')+'</div>'+
+    '<div class="r"><div class="ic g">📄</div><div class="rm"><div class="rt">'+esc(ct.kind)+' '+esc(ct.no)+'</div>'+
+    '<div class="rs num">'+esc(dstr(ct.start))+' → '+esc(dstr(ct.end))+'</div></div>'+
+    '<div class="rv"><button class="btn s g" onclick="closeSheet();go(\'money\',1)">'+L('فتح','Open')+'</button></div></div>';
+  }
+  if(coms.length){
+    h+='<div class="sec">'+L('العمولة','Commission')+' <b class="num">'+M(netOf(coms))+'</b></div>'+
+    coms.map(function(x){
+      return '<div class="r"><div class="ic '+(x.amount<0?'a':'g')+'">₪</div><div class="rm">'+
+      '<div class="rt">'+esc(x.who)+'</div><div class="rs num">'+x.rate+'%</div></div>'+
+      '<div class="rv"><div class="rn num" style="color:'+(x.amount<0?'var(--clay)':'var(--jade)')+'">'+M(x.amount)+'</div></div></div>';}).join('');
+  }
+
+  if(!closed){
+    h+='<button class="btn" onclick="winDeal(\''+id+'\')">'+L('إغلاق بنجاح','Close won')+'</button>'+
+       '<button class="btn g" onclick="loseDeal(\''+id+'\')">'+L('إغلاق كخسارة','Close lost')+'</button>';
+  }else if(d.won&&!ct){
+    h+='<button class="btn" onclick="contractSheet(\''+id+'\')">'+L('إنشاء العقد','Create the contract')+'</button>';
+  }
+  h+='<button class="btn g" onclick="docSheet(\'deal\',\''+id+'\')">'+L('المستندات','Documents')+
+     ' ('+docsOf('deal',id).length+')</button>';
+  h+=timelineBlock('deal',id);
+  sheet(h);
 }
-function moveDeal(id,s){
-  var d=Repo.find('deals',id);
+
+function moveDeal(id,s,silent){
+  var d=Repo.find('deals',id); if(!d||d.stage===s)return;
   Repo.update('deals',id,{stage:s,stage_at:nowISO()});
-  logAct('deal',id,'stage','انتقلت الصفقة من '+d.stage+' إلى '+s,'Stage: '+d.stage+' → '+s);
-  closeSheet();render();toast(s);
+  logAct('deal',id,'stage','انتقلت الصفقة '+(d.no||'')+' من '+d.stage+' إلى '+s,'Stage: '+d.stage+' → '+s);
+  if(s==='تفاوض')pushTask('neg:'+id,'متابعة التفاوض — '+contactOf(d.contact_id).name_ar,
+    new Date(Date.now()+2*864e5).toISOString().slice(0,10),d.owner_user,'deal',id);
+  Repo.flush();
+  if(silent)return;
+  closeSheet();render();dealSheet(id);toast(s);
 }
+
 function winDeal(id){
-  var d=Repo.find('deals',id),c=contactOf(d.contact_id);
-  Repo.insert('commissions',{who:L('المكتب','Office'),beneficiary:Session.user.id,basis:d.value,rate:2.5,
-    amount:Math.round(d.value*0.025),reason:'عمولة وساطة — '+c.name_ar,deal_id:id});
-  Repo.update('deals',id,{stage:'مغلقة',closed_at:nowISO()});
-  logAct('deal',id,'won','أُغلقت صفقة بنجاح وأُنشئ قيد العمولة','Deal won, commission entry created');
-  notify('أُغلقت صفقة — راجع قيد العمولة','Deal closed — review the commission entry');
-  sheet('<h3>'+L('أُغلقت الصفقة','Deal won')+'</h3><div class="sub">'+L('أُنشئ قيد العمولة تلقائيًا','Commission entry created')+'</div>'+
-  '<button class="btn" onclick="makeContract(\''+id+'\')">'+L('إنشاء عقد الإيجار','Create the lease')+'</button>'+
+  var d=dealOf(id);
+  var acc=dealOffers(id).filter(function(o){return o.status==='مقبول';}).pop();
+  if(acc&&acc.amount!==d.value){Repo.update('deals',id,{value:acc.amount});d=dealOf(id);}
+  var rows=postCommission(id);
+  Repo.update('deals',id,{stage:'مغلقة',won:true,closed_at:nowISO()});
+  var m=Repo.find('mandates',d.mandate_id);
+  if(m)setState(m.id,'محجوز','صفقة '+(d.no||''));
+  logAct('deal',id,'won','أُغلقت الصفقة '+(d.no||'')+' بنجاح وقُيّدت العمولة على '+rows.length+' قيدًا',
+    'Deal won, '+rows.length+' commission entries posted');
+  notify('أُغلقت صفقة — صافي العمولة '+M(netOf(rows)),'Deal closed — net '+M(netOf(rows)),'info');
+  sheet('<h3>'+L('أُغلقت الصفقة','Deal won')+'</h3>'+
+  '<div class="sub">'+L('العمولة قُيّدت لكل مستفيد على حدة','Commission posted per beneficiary')+'</div>'+
+  (rows.length?rows.map(function(x){
+    return '<div class="r"><div class="ic '+(x.amount<0?'a':'g')+'">₪</div><div class="rm">'+
+    '<div class="rt">'+esc(x.who)+'</div><div class="rs num">'+M(x.basis)+' × '+x.rate+'%</div></div>'+
+    '<div class="rv"><div class="rn num" style="color:'+(x.amount<0?'var(--clay)':'var(--jade)')+'">'+M(x.amount)+'</div></div></div>';}).join('')+
+   '<div class="r" style="background:var(--mineral)"><div class="rm"><div class="rt">'+L('الصافي للمكتب','Net to office')+'</div></div>'+
+   '<div class="rv"><div class="rn num">'+M(netOf(rows))+'</div></div></div>'
+   :'<div class="note">'+L('لم يُقيَّد شيء — راجع نسبة العمولة في الإعدادات','Nothing posted — check the commission rate in Settings')+'</div>')+
+  '<div class="note" style="margin-top:11px">'+L('العقار الآن «محجوز» ولا يظهر في المطابقة. يصير مؤجرًا أو مباعًا عند تفعيل العقد.',
+   'The property is now reserved and out of matching. It becomes leased or sold when the contract activates.')+'</div>'+
+  '<button class="btn" onclick="contractSheet(\''+id+'\')">'+L('إنشاء العقد الآن','Create the contract now')+'</button>'+
   '<button class="btn g" onclick="closeSheet();go(\'money\',0)">'+L('لاحقًا','Later')+'</button>');
 }
+
 function loseDeal(id){
   sheet('<h3>'+L('سبب الخسارة','Loss reason')+'</h3><div class="sub">'+
   L('قائمة محددة — لأنها الإجابة الصادقة الوحيدة','A fixed list — the only honest answer')+'</div><div class="pick">'+
@@ -1406,26 +2306,20 @@ function loseDeal(id){
     return '<button class="pk a" onclick="confirmLoss(\''+id+'\',\''+r[0]+'\')">'+bi(r)+'</button>';}).join('')+'</div>');
 }
 function confirmLoss(id,r){
+  var d=dealOf(id);
   Repo.update('deals',id,{stage:'خسارة',lost_reason:r,closed_at:nowISO()});
-  logAct('deal',id,'lost','خسارة صفقة: '+r,'Deal lost: '+r);
+  var m=Repo.find('mandates',d.mandate_id);
+  if(m&&mState(m)==='محجوز')setState(m.id,'متاح','خسارة صفقة');
+  logAct('deal',id,'lost','خسارة الصفقة '+(d.no||'')+': '+r,'Deal lost: '+r);
   closeSheet();go('deals',2);toast(r);
 }
-function makeContract(dealId){
-  var d=Repo.find('deals',dealId);
-  var no='C-'+new Date().getFullYear()+'-'+String(Repo.all('contracts').length+101).padStart(5,'0');
-  var ct=Repo.insert('contracts',{no:no,mandate_id:d.mandate_id,contact_id:d.contact_id,
-    start:new Date().toISOString().slice(0,10),total:d.value,freq:'ربع سنوي',status:'active'});
-  var per=Math.round(d.value/4),st=new Date();
-  for(var i=0;i<4;i++){var dt=new Date(st);dt.setMonth(dt.getMonth()+i*3);
-    Repo.insert('payments',{contract_id:ct.id,no:i+1,due:dt.toISOString().slice(0,10),
-      amount:i===3?d.value-per*3:per,paid:0});}
-  logAct('contract',ct.id,'activated','أُنشئ العقد '+no+' وتوّلدت 4 دفعات','Contract '+no+' created with 4 instalments');
-  closeSheet();go('money',1);toast(L('أُنشئ العقد وتوّلدت الدفعات','Contract and schedule created'));
-}
+
+function makeContract(dealId){ contractSheet(dealId); }
+
 function reverseCom(id){
   var x=Repo.find('commissions',id);
-  Repo.insert('commissions',{who:x.who,beneficiary:x.beneficiary,basis:x.basis,rate:x.rate,
-    amount:-x.amount,reason:'قيد عكسي: '+x.reason,reverses:id});
+  Repo.insert('commissions',{who:x.who,beneficiary:x.beneficiary,basis:x.basis,rate:x.rate,kind:'reversal',
+    deal_id:x.deal_id||null,amount:-x.amount,reason:'قيد عكسي: '+x.reason,reverses:id});
   logAct('commission',id,'reversed','قيد عكسي لتصحيح عمولة','Commission reversed');
   render();toast(L('أُنشئ قيد عكسي — الأصل لم يُمس','Reversal created — the original is untouched'));
 }
@@ -1436,21 +2330,40 @@ function pickMandate(){
   '<div class="ic">'+(ICONS[asset(m).type]||'🏠')+'</div><div class="rm"><div class="rt">'+mandateTitle(m)+'</div></div>'+
   '<div class="rv">›</div></button>';}).join(''));
 }
-function viewingSheet(mid){
+function viewingSheet(mid,dealId){
   var m=Repo.find('mandates',mid);
-  sheet('<h3>'+t('viewing')+'</h3><div class="sub">'+mandateTitle(m)+'</div>'+
-  '<div class="f"><label>'+t('client')+'</label><select id="vc">'+Repo.all('contacts').map(function(c){
-    return '<option value="'+c.id+'">'+esc(c.name_ar)+'</option>';}).join('')+'</select></div>'+
+  var d=dealId?dealOf(dealId):null;
+  sheet('<h3>'+t('viewing')+'</h3><div class="sub">'+mandateTitle(m)+
+  (d?' · '+esc(contactOf(d.contact_id).name_ar):'')+'</div>'+
+  (d?'<input type="hidden" id="vc" value="'+d.contact_id+'">'
+    :'<div class="f"><label>'+t('client')+'</label><select id="vc">'+Repo.all('contacts').map(function(c){
+      return '<option value="'+c.id+'">'+esc(c.name_ar)+'</option>';}).join('')+'</select></div>')+
   '<div class="f"><label>'+L('الموعد','When')+'</label><input id="vw" type="datetime-local"></div>'+
   '<div class="f"><label>'+L('مكان اللقاء والمفتاح','Meeting point and key')+'</label><input id="vm"></div>'+
-  '<button class="btn" onclick="saveViewing(\''+mid+'\')">'+t('save')+'</button>');
+  '<button class="btn" onclick="saveViewing(\''+mid+'\','+(dealId?'\''+dealId+'\'':'null')+')">'+t('save')+'</button>');
 }
-function saveViewing(mid){
-  var v=Repo.insert('viewings',{mandate_id:mid,contact_id:val('vc'),when:val('vw')||nowISO(),
-    status:'مجدولة',interest:null,obj:[],meet:val('vm')});
-  logAct('viewing',v.id,'scheduled','جُدولت معاينة','Viewing scheduled');
-  closeSheet();go('deals',1);toast(L('جُدولت المعاينة','Viewing scheduled'));
+function saveViewing(mid,dealId){
+  var cid=val('vc'); if(!cid){toast(L('اختر العميل','Choose a client'));return;}
+  /* المعاينة بلا صفقة يتيمة — إن لم تُمرَّر صفقة نصلها بالمفتوحة أو نفتح واحدة */
+  var d=dealId?dealOf(dealId):openDealFor(mid,cid);
+  if(!d&&(can('deal.create')||can('deal.*'))){
+    var m0=Repo.find('mandates',mid);
+    d=Repo.insert('deals',{no:dealNo(),mandate_id:mid,contact_id:cid,purpose:m0.purpose,stage:'اهتمام',
+      value:m0.price,owner_user:Session.user.id,stage_at:nowISO(),
+      marketer_id:isMarketer()?Session.user.id:null});
+    logAct('deal',d.id,'created','فُتحت صفقة '+d.no+' من جدولة معاينة','Deal opened from a viewing');
+  }
+  var v=Repo.insert('viewings',{mandate_id:mid,contact_id:cid,deal_id:d?d.id:null,
+    when:val('vw')||nowISO(),status:'مجدولة',interest:null,obj:[],meet:val('vm'),by:Session.user.id});
+  if(d)advance(d.id,'معاينة');
+  pushTask('vwt:'+v.id,'تسجيل نتيجة المعاينة',dstr(val('vw')||nowISO()),Session.user.id,'viewing',v.id);
+  Repo.flush();
+  logAct('viewing',v.id,'scheduled','جُدولت معاينة — '+contactOf(cid).name_ar,'Viewing scheduled');
+  closeSheet();
+  if(d){go('deals');dealSheet(d.id);}else go('deals',1);
+  toast(L('جُدولت المعاينة','Viewing scheduled'));
 }
+
 function completeViewing(id){
   vDraft={obj:[],interest:null};
   var v=Repo.find('viewings',id),m=Repo.find('mandates',v.mandate_id);
@@ -1468,8 +2381,21 @@ function togObj(el,o){var i=vDraft.obj.indexOf(o);
   if(i>-1){vDraft.obj.splice(i,1);el.className='pk a';}else{vDraft.obj.push(o);el.className='pk a on';}}
 function saveViewingResult(id){
   if(!vDraft.interest){toast(L('اختر رأي العميل','Choose the interest'));return;}
-  Repo.update('viewings',id,{status:'تمت',interest:vDraft.interest,obj:vDraft.obj.slice()});
-  logAct('viewing',id,'completed','اكتملت معاينة — '+vDraft.interest,'Viewing completed');
+  Repo.update('viewings',id,{status:'تمت',interest:vDraft.interest,obj:vDraft.obj.slice(),done_at:nowISO()});
+  var v=Repo.find('viewings',id);
+  logAct('viewing',id,'completed','اكتملت معاينة — '+vDraft.interest+
+    ((v.obj||[]).length?' · '+v.obj.join('، '):''),'Viewing completed');
+  var keen=['مهتم جدًا','مهتم'].indexOf(v.interest)>-1;
+  if(v.deal_id){
+    if(keen)advance(v.deal_id,'عرض سعر');
+    else pushTask('fu:'+id,'إعادة ترشيح بعد معاينة غير موفقة',
+      new Date(Date.now()+864e5).toISOString().slice(0,10),Session.user.id,'deal',v.deal_id);
+    Repo.flush();
+    closeSheet();render();
+    if(keen){dealSheet(v.deal_id);toast(L('سُجّلت — سجّل عرض السعر الآن','Recorded — record the offer now'));}
+    else toast(L('سُجّلت — تحدّث تقرير المالك','Recorded — the owner report is updated'));
+    return;
+  }
   closeSheet();go('reports',0);toast(L('سُجّلت — تحدّث تقرير المالك','Recorded — owner report updated'));
 }
 
@@ -1532,6 +2458,23 @@ function ownerReport(mid){
   var d=daysOnMarket(m);
   var lines=['تقرير عن عقاركم',mandateTitle(m),'','المدة في السوق: '+d+' يومًا',
     'المعاينات: '+vs.length,'قنوات النشر: '+((m.channels||[]).length)];
+  var ctA=Repo.where('contracts',function(c){return c.mandate_id===mid&&c.status==='نشط';})[0];
+  if(ctA){
+    lines=['تقرير عن عقاركم',mandateTitle(m),'','العقد: '+ctA.no,
+      'ينتهي في: '+dstr(ctA.end),'المحصَّل حتى تاريخه: '+M(ctCollected(ctA.id))+' ريال'];
+    var ar=ctArrears(ctA.id); if(ar)lines.push('متأخرات: '+M(ar)+' ريال — نتابع التحصيل');
+    var jobs=Repo.where('services',function(x){return x.asset_id===a.id;});
+    if(jobs.length)lines.push('أعمال الصيانة: '+jobs.length+' ('+jobs.filter(function(x){return x.status==='منجز';}).length+' منجزة)');
+    var bk=ownerBook(a.id);
+    if(bk.mandate)lines.push('','صافي المستحق لكم: '+M(bk.earned-bk.paid)+' ريال');
+    lines.push('',Session.office.name_ar);
+    var txA=lines.join('\n');
+    logAct('mandate',mid,'owner_report','تقرير إدارة للمالك '+o.name_ar,'Management report prepared');
+    sheet('<h3>'+t('owner_report')+'</h3><div class="sub">'+esc(o.name_ar)+'</div>'+
+    '<div class="bubble">'+esc(txA)+'</div>'+
+    '<button class="btn" onclick="send(\''+(o.phone||'')+'\','+JSON.stringify(txA)+')">'+t('send')+'</button>');
+    return;
+  }
   if(top)lines.push('','أكثر ملاحظة تكررت: '+top+' ('+tal[top]+' من الزوار)');
   if(!vs.length)lines.push('','لم تُسجّل معاينات هذا الأسبوع — نواصل التسويق ونبلغكم أولًا بأول.');
   else if(top==='السعر'&&tal[top]>=Math.ceil(vs.length/2))
@@ -1575,20 +2518,84 @@ function markSent(rid,ph,tx){
 function contactSheet(id){
   var c=Repo.find('contacts',id);
   var rs=Repo.where('requirements',function(r){return r.contact_id===id;});
-  sheet('<h3>'+esc(c.name_ar)+'</h3><div class="sub">'+esc(c.role)+' · <span class="num">'+esc(c.phone)+'</span></div>'+
-  (rs.length?'<div class="sec">'+L('طلباته','Requests')+'</div>'+rs.map(function(r){
-    return '<div class="r"><div class="ic g">☰</div><div class="rm"><div class="rt">'+r.purpose+'</div>'+
-    '<div class="rs num">'+M(r.min)+'–'+M(r.max)+'</div></div>'+
-    '<div class="rv"><div class="sc num">'+match(r).length+'</div></div></div>';}).join(''):'')+
+  var ds=Repo.where('deals',function(d){return d.contact_id===id;});
+  var cs=Repo.where('contracts',function(x){return x.contact_id===id;});
+  var own=Repo.where('assets',function(a){return a.owner_id===id;});
+  sheet('<h3>'+esc(c.name_ar)+'</h3><div class="sub">'+esc(c.role)+' · <span class="num">'+esc(c.phone)+'</span>'+
+  (c.source?' · '+esc(c.source):'')+'</div>'+
+  (rs.length?'<div class="sec">'+L('طلباته','Requests')+' <b>'+rs.length+'</b></div>'+rs.map(function(r){
+    return '<button class="r" onclick="closeSheet();clientReport(\''+r.id+'\')"><div class="ic g">☰</div><div class="rm">'+
+    '<div class="rt">'+r.purpose+'</div><div class="rs num">'+M(r.min)+'–'+M(r.max)+'</div></div>'+
+    '<div class="rv"><div class="sc num">'+match(r).length+'</div></div></button>';}).join(''):'')+
+  (ds.length?'<div class="sec">'+L('صفقاته','Deals')+' <b>'+ds.length+'</b></div>'+ds.map(function(d){
+    var m=Repo.find('mandates',d.mandate_id);
+    return '<button class="r" onclick="dealSheet(\''+d.id+'\')"><div class="ic '+(d.won?'g':isClosed(d)?'a':'w')+'">◆</div>'+
+    '<div class="rm"><div class="rt">'+(m?mandateTitle(m):'—')+'</div>'+
+    '<div class="rs num">'+esc(d.no||'')+' · '+M(d.value)+'</div></div>'+
+    '<div class="rv"><span class="tag t-n">'+esc(d.stage)+'</span></div></button>';}).join(''):'')+
+  (cs.length?'<div class="sec">'+L('عقوده','Contracts')+' <b>'+cs.length+'</b></div>'+cs.map(function(x){
+    return '<div class="r"><div class="ic g">📄</div><div class="rm"><div class="rt">'+esc(x.kind)+' '+esc(x.no)+'</div>'+
+    '<div class="rs num">'+esc(dstr(x.start))+' → '+esc(dstr(x.end))+'</div></div>'+
+    '<div class="rv"><span class="tag t-n">'+esc(x.status)+'</span></div></div>';}).join(''):'')+
+  (own.length?'<div class="sec">'+L('عقاراته','Properties owned')+' <b>'+own.length+'</b></div>'+own.map(function(a){
+    var m=Repo.where('mandates',function(x){return x.asset_id===a.id;})[0];
+    return '<div class="r"><div class="ic">'+(ICONS[a.type]||'🏠')+'</div><div class="rm">'+
+    '<div class="rt">'+esc(a.type)+' — '+esc(a.hood)+'</div>'+
+    '<div class="rs">'+(m?esc(m.purpose):'')+'</div></div>'+
+    '<div class="rv">'+(m?stateTag(m):'')+'</div></div>';}).join(''):'')+
   '<button class="btn" onclick="send(\''+c.phone+'\',\'\')">WhatsApp</button>'+
+  '<button class="btn o" onclick="docSheet(\'contact\',\''+id+'\')">'+L('المستندات','Documents')+
+   ' ('+docsOf('contact',id).length+')</button>'+
   '<button class="btn g" onclick="closeSheet()">'+t('close')+'</button>');
 }
 
 function collabAct(id,st){
+  if(!can('network.*')&&Session.role!=='owner'){toast(t('no_perm'));return;}
+  if(st==='معتمد')return collabApproveSheet(id);
   Repo.update('collabs',id,{status:st,handled_by:Session.user.id,handled_at:nowISO()});
   logAct('collab',id,'handled','طلب تعاون: '+st,'Collaboration: '+st);
   render();toast(st);
 }
+function collabApproveSheet(id){
+  var cb=Repo.find('collabs',id),m=cb.mandate_id?Repo.find('mandates',cb.mandate_id):null;
+  sheet('<h3>'+L('اعتماد التعاون','Approve collaboration')+'</h3>'+
+  '<div class="sub">'+esc(cb.from)+(m?' · '+mandateTitle(m):'')+'</div>'+
+  '<div class="bubble">'+esc(cb.note||'')+'</div>'+
+  '<div class="f" style="margin-top:12px"><label>'+L('حصتهم من العمولة %','Their share of the commission %')+'</label>'+
+  '<input id="cbs" type="number" value="50"></div>'+
+  '<div class="note">'+L('النسبة تُثبَّت الآن، فتُقيَّد آليًا عند إغلاق الصفقة ولا تُتفاوض مرة أخرى وقت المال.',
+   'The split is fixed now, so it posts automatically at closing and is not renegotiated when the money arrives.')+'</div>'+
+  '<button class="btn" onclick="collabApprove(\''+id+'\')">'+t('approve')+'</button>');
+}
+function collabApprove(id){
+  var cb=Repo.find('collabs',id),split=+val('cbs')||0;
+  Repo.update('collabs',id,{status:'معتمد',split:split,handled_by:Session.user.id,handled_at:nowISO()});
+  if(!Repo.all('partners').filter(function(p){return p.name===cb.from;}).length)
+    Repo.insert('partners',{name:cb.from,contact:'—',phone:cb.phone||'',split:100-split,status:'معتمد'});
+  logAct('collab',id,'approved','اعتُمد تعاون مع '+cb.from+' بحصة '+split+'%','Collaboration approved at '+split+'%');
+  notify('اعتُمد التعاون مع '+cb.from,'Collaboration approved','info');
+  closeSheet();render();toast(L('اعتُمد — سجّل عميلهم لفتح الصفقة','Approved — register their client to open the deal'));
+}
+/* عميل المكتب المتعاون يُسجَّل عندنا، فتُنسب الصفقة والحصة لمصدرهما */
+function collabDeal(id){
+  var cb=Repo.find('collabs',id);
+  if(!cb.mandate_id){toast(L('الطلب غير مرتبط بعرض','Not linked to a listing'));return;}
+  sheet('<h3>'+L('عميل المكتب المتعاون','Their client')+'</h3>'+
+  '<div class="sub">'+esc(cb.from)+' · '+L('حصتهم','their share')+' '+(cb.split||0)+'%</div>'+
+  '<div class="two"><div class="f"><label>'+L('الاسم','Name')+'</label><input id="cdn"></div>'+
+  '<div class="f"><label>'+t('phone')+'</label><input id="cdp" inputmode="tel"></div></div>'+
+  '<button class="btn" onclick="saveCollabDeal(\''+id+'\')">'+L('فتح الصفقة','Open the deal')+'</button>');
+}
+function saveCollabDeal(id){
+  var cb=Repo.find('collabs',id),n=val('cdn');
+  if(!n){toast(L('أدخل الاسم','Enter a name'));return;}
+  var ph=val('cdp');
+  var ex=Repo.all('contacts').filter(function(c){return ph&&c.phone===ph;})[0];
+  var c=ex||Repo.insert('contacts',{name_ar:n,phone:ph,role:'باحث',source:'تعاون — '+cb.from,
+    assigned_to:nextAssignee()});
+  startDeal(cb.mandate_id,c.id,id);
+}
+
 function userSheet(){
   sheet('<h3>'+L('مستخدم جديد','New user')+'</h3>'+
   '<div class="two"><div class="f"><label>'+L('الاسم','Name')+'</label><input id="un"></div>'+
@@ -1617,7 +2624,10 @@ function confirmMessaging(){
 function setAssign(v){Repo.update('offices',Session.office.id,{assignment:v});render(true);}
 function saveOffice(){
   Repo.update('offices',Session.office.id,{name_ar:val('on'),fal:val('ofal'),cr:val('ocr'),
-    vat:val('ovat'),phone:val('oph'),sla_hours:+val('osla')||24});
+    vat:val('ovat'),phone:val('oph'),sla_hours:+val('osla')||24,
+    rate_sale:+val('ors')||0,rate_rent:+val('orr')||0});
+  var stg=Repo.all('settings')[0];
+  if(stg)Repo.update('settings',stg.id,{grace_days:+val('ogr')||0});
   Session.office=Repo.find('offices',Session.office.id);
   logAct('office',Session.office.id,'updated','تعديل بيانات المكتب','Office updated');
   render();toast(t('saved'));
@@ -1642,6 +2652,7 @@ function doReset(){
 Store.loadKV(function(){
   Repo.load();
   restoreSession();
+  if(Session.user)runChecks();
   render();
 });
 </script>
