@@ -26,12 +26,12 @@ input,select,textarea{font-family:inherit;font-size:16px;width:100%;padding:11px
 border-radius:11px;background:var(--white);color:var(--ink);-webkit-appearance:none}
 input:focus,select:focus,textarea:focus{outline:2px solid var(--jade);outline-offset:-1px}
 .num{font-variant-numeric:tabular-nums;direction:ltr;unicode-bidi:isolate}
-/* أي عنصر يتجاوز العرض كان يدفع الصفحة كلها جانبًا. clip يقصّ الزائد
-   ولا ينشئ حاوية تمرير، فيبقى الشريط العلوي لاصقًا كما هو. */
-.app{width:100%;max-width:540px;min-height:100vh;position:relative;overflow-x:clip;
+/* لا قصّ على هذه الحاوية: الشريط العلوي lاصق (sticky)، وأي قصّ فوقه
+   يجعله يلتصق بالحاوية لا بالشاشة فينزلق معها. القصّ يبقى محصورًا
+   في اللوح وحده — وهو العنصر الوحيد الذي يتجاوز العرض. */
+.app{width:100%;max-width:540px;min-height:100vh;position:relative;
   padding-bottom:calc(74px + env(safe-area-inset-bottom))}
-@supports not (overflow-x:clip){.app{overflow-x:hidden}}
-html,body{max-width:100%}
+html,body{max-width:100%;overflow-x:hidden}
 
 /* login */
 .login{width:100%;max-width:420px;min-height:100vh;display:flex;flex-direction:column;justify-content:center;padding:26px}
@@ -114,11 +114,11 @@ border-radius:17px;background:var(--ink);color:#fff;font-size:25px;display:grid;
 .p-p small{font-size:10.5px;font-weight:500;color:var(--faint);margin-inline-start:3px}
 .p-m{display:flex;gap:11px;font-size:11.5px;color:var(--muted);margin-top:8px;padding-top:8px;border-top:1px solid var(--line)}
 .p-m b{font-weight:700;color:var(--ink)}
-.board{display:flex;gap:8px;overflow-x:auto;padding-bottom:6px;margin:0 -14px;padding-inline:14px;
+.board{display:flex;gap:8px;overflow-x:auto;margin:0;padding:0 14px 6px;
   scroll-snap-type:x proximity;overscroll-behavior-x:contain}
 .board::-webkit-scrollbar{display:none}
 /* تدرّج على الحافة يقول «هنا يكمل» — بدونه يُقرأ القصّ كخطأ لا كتمرير */
-.boardw{position:relative}
+.boardw{position:relative;margin:0 -14px;overflow:hidden}
 .boardw:after{content:'';position:absolute;top:0;bottom:6px;inset-inline-end:0;width:26px;
   background:linear-gradient(to left,var(--mineral),transparent);pointer-events:none}
 html[dir=ltr] .boardw:after{background:linear-gradient(to right,var(--mineral),transparent)}
