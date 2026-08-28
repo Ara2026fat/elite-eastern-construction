@@ -3,7 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>EEC</title>
+<title>بناء الشرق — نظام المكتب</title>
+<meta name="theme-color" content="#0A4F45">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="بناء الشرق">
+<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='104' fill='%230A4F45'/%3E%3Cpath d='M256 96l144 88v144l-144 88-144-88V184z' fill='none' stroke='%23C9A227' stroke-width='24'/%3E%3Cpath d='M256 208v112M200 264h112' stroke='%23C9A227' stroke-width='24' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='104' fill='%230A4F45'/%3E%3Cpath d='M256 96l144 88v144l-144 88-144-88V184z' fill='none' stroke='%23C9A227' stroke-width='24'/%3E%3Cpath d='M256 208v112M200 264h112' stroke='%23C9A227' stroke-width='24' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="manifest" href="data:application/manifest+json,{&quot;name&quot;: &quot;مؤسسة بناء الشرق المميز للخدمات العقارية&quot;, &quot;short_name&quot;: &quot;بناء الشرق&quot;, &quot;start_url&quot;: &quot;./&quot;, &quot;scope&quot;: &quot;./&quot;, &quot;display&quot;: &quot;standalone&quot;, &quot;orientation&quot;: &quot;portrait&quot;, &quot;background_color&quot;: &quot;%230C1A18&quot;, &quot;theme_color&quot;: &quot;%230A4F45&quot;, &quot;dir&quot;: &quot;rtl&quot;, &quot;lang&quot;: &quot;ar&quot;, &quot;icons&quot;: [{&quot;src&quot;: &quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='104' fill='%230A4F45'/%3E%3Cpath d='M256 96l144 88v144l-144 88-144-88V184z' fill='none' stroke='%23C9A227' stroke-width='24'/%3E%3Cpath d='M256 208v112M200 264h112' stroke='%23C9A227' stroke-width='24' stroke-linecap='round'/%3E%3C/svg%3E&quot;, &quot;sizes&quot;: &quot;any&quot;, &quot;type&quot;: &quot;image/svg+xml&quot;, &quot;purpose&quot;: &quot;any maskable&quot;}]}">
 <style>
 :root{--ink:#0C1A18;--jade:#0A4F45;--jade2:#0E6B5C;--saff:#B57A1E;--clay:#A63A26;
 --mineral:#EDF1F0;--white:#fff;--line:#DBE3E1;--muted:#5A6A68;--faint:#8E9C9A;--gold:#C9A227;
@@ -154,7 +162,20 @@ background:var(--ink);color:#fff;padding:12px 16px;border-radius:13px;font-size:
 .tl .e:before{content:"";position:absolute;inset-inline-start:-19px;top:5px;width:8px;height:8px;border-radius:50%;background:var(--jade)}
 </style>
 </head>
+<style>
+/* ── حالة الاتصال ──────────────────────────────────────────────
+   الوسيط يقف أمام العقار بلا شبكة. لا يكفي أن يعمل التطبيق،
+   بل يجب أن يعرف أنه يعمل، وإلا ظنّ أن ما أدخله ضاع. */
+.offbar{
+  display:none;position:sticky;top:0;z-index:80;
+  background:var(--clay);color:#fff;text-align:center;
+  padding:7px 12px;font-size:12.5px;font-weight:600;line-height:1.5;
+}
+body.off .offbar{display:block}
+body.off .hd{background:linear-gradient(140deg,#4A3A2A,#2A1F16)}
+</style>
 <body>
+<div id="offbar" class="offbar">لا يوجد اتصال — التطبيق يعمل وبياناتك محفوظة على هذا الجهاز</div>
 <div id="root"></div>
 <div class="sh" id="sh" onclick="if(event.target.id==='sh')closeSheet()"><div class="sheet" id="sheet"></div></div>
 <div class="toast" id="toast"></div>
@@ -507,7 +528,7 @@ var Seed={build:function(){
  var oid='o1';
  var db={};
  Repo.collections.forEach(function(c){db[c]=[];});
- db.offices=[{id:oid,name_ar:'مكتب الشرق المميز',name_en:'Elite Eastern Office',city_ar:'الجبيل',city_en:'Jubail',
+ db.offices=[{id:oid,name_ar:'مؤسسة بناء الشرق المميز للخدمات العقارية',name_en:'Bina Al-Sharq Real Estate',city_ar:'الجبيل',city_en:'Jubail',
    fal:'',cr:'',vat:'',phone:'0508085578',assignment:'rotation',sla_hours:24,
    rate_sale:2.5,rate_rent:2.5,mgmt_fee:5,created_at:nowISO()}];
  db.users=[
@@ -808,7 +829,7 @@ function render(same){
 
   document.getElementById('root').innerHTML=
    '<div class="app"><header class="hd"><div class="hr">'+
-   '<div class="lg">EEC<i>.</i></div><div class="sp"></div>'+
+   '<div class="lg">'+esc(shortName())+'<i>.</i></div><div class="sp"></div>'+
    '<button class="pill" onclick="flipLang()">'+t('lang')+'</button>'+
    '<button class="pill g" onclick="accountSheet()">'+esc(LANG==='en'?Session.user.name_en:Session.user.name_ar)+'</button>'+
    '</div><h1>'+(isSec?t(n.t):t(n.h))+'</h1><div class="sub">'+(isSec?t(n.d):t(n.s))+'</div>'+
@@ -837,7 +858,7 @@ function badges(){
 function loginView(){
   var of=Repo.all('offices')[0];
   return '<div class="login"><div class="brand">'+
-  (isDemo()||!of?'EEC<i>.</i>':esc(of.name_ar)+'<i>.</i>')+'</div>'+
+  esc(of?shortName():SHORT_FALLBACK)+'<i>.</i></div>'+
   '<div class="tag">'+t('brand_tag')+'</div>'+
   '<div class="card"><div class="f"><label>'+t('phone')+'</label>'+
   '<input id="lp" inputmode="tel" placeholder="05XXXXXXXX"></div>'+
@@ -893,6 +914,7 @@ function accountSheet(){
     L('حسابك ما زال بكلمة المرور التجريبية — غيّرها قبل أول عميل.',
       'This account still uses the demo password.')+'</div>')+
   '<button class="btn g" onclick="closeSheet();go(\'log\')">'+t('sec_log')+'</button>'+
+  '<button class="btn g" onclick="flushApp()">'+L('تحديث التطبيق','Refresh the app')+'</button>'+
   '<button class="btn r" onclick="logout()">'+t('logout')+'</button>');
 }
 
@@ -1741,6 +1763,11 @@ VIEWS.settings=function(){
       :'<div class="hero a"><div class="t">'+L('لم تُؤخذ نسخة احتياطية بعد','No backup yet')+'</div>'+
        '<div class="v num">'+pend+'</div><div class="f">'+
        L('سجلًا معرّضًا للضياع — البيانات في هذا الجهاز وحده','records at risk — the data lives on this device only')+'</div></div>')+
+    '<div class="r"><div class="ic '+(navigator.onLine===false?'a':'g')+'">'+
+      (navigator.onLine===false?'⌁':'◉')+'</div><div class="rm">'+
+      '<div class="rt">'+(navigator.onLine===false?L('بلا اتصال','Offline'):L('متصل','Online'))+'</div>'+
+      '<div class="rs wrap">'+L('التطبيق يعمل في الحالتين — البيانات على هذا الجهاز لا على الشبكة.',
+        'The app works either way; the data lives on this device, not on the network.')+'</div></div></div>'+
     '<button class="btn" onclick="downloadBackup()">'+L('نزّل نسخة احتياطية (ملف)','Download a backup file')+'</button>'+
     '<label class="photo" style="margin-top:9px">'+L('استعادة من ملف','Restore from a file')+
     '<input type="file" accept="application/json,.json" style="display:none" onchange="restoreFile(this)"></label>'+
@@ -2366,6 +2393,16 @@ function runChecks(){
    لا يُسلَّم مكتب حقيقي نظامًا فيه عملاء وهميون. وقبل أول عميل
    هناك ما لا يكفي فيه الكود: أرقام وتراخيص ونسخة احتياطية.
    ════════════════════════════════════════════════════════════════ */
+var SHORT_FALLBACK='بناء الشرق';
+/* الشعار يحمل اسم المنشأة لا رمزًا لا يعرفه أحد. والاسم النظامي طويل،
+   فيُختصر للعرض ويبقى كاملًا في التقارير والرسائل الرسمية. */
+function shortName(){
+  var o=(Session.office&&Repo.find('offices',Session.office.id))||Repo.all('offices')[0];
+  var n=(o&&(LANG==='en'?(o.name_en||o.name_ar):o.name_ar))||SHORT_FALLBACK;
+  n=String(n).replace(/^مؤسسة\s+/,'').replace(/\s+للخدمات العقارية$/,'')
+             .replace(/\s+Real Estate$/i,'');
+  return n.length>18?n.slice(0,18)+'…':n;
+}
 function stg(){return Repo.all('settings')[0]||{};}
 
 /* «تقرير أسبوعي حتى لو لم يحدث شيء» هو الوعد المعلن على الصفحة.
@@ -3984,11 +4021,45 @@ function doReset(){
 /* ════════════════════════════════════════════════════════════════
    13 · BOOT
    ════════════════════════════════════════════════════════════════ */
+/* ── يعمل بلا شبكة ─────────────────────────────────────────────
+   البيانات في الجهاز أصلًا، فالناقص هو ملف التطبيق. عامل الخدمة
+   يحفظه، وطريقته «الشبكة أولًا» حتى يصل التحديث فور رفعه. */
+var SW=null;
+function markNet(){
+  var off=(typeof navigator!=='undefined')&&navigator.onLine===false;
+  if(document.body)document.body.className=off?'off':'';
+}
+if(typeof window!=='undefined'&&window.addEventListener){
+  window.addEventListener('online',markNet);
+  window.addEventListener('offline',markNet);
+}
+function initSW(){
+  if(!('serviceWorker' in navigator))return;
+  if(location.protocol==='file:')return;      /* لا يعمل على ملف محلي، ولا داعي لخطأ في السجل */
+  navigator.serviceWorker.register('./sw.js').then(function(r){SW=r;}).catch(function(){});
+  navigator.serviceWorker.addEventListener('message',function(e){
+    if(e.data==='eec:flushed')location.reload();
+  });
+}
+/* منفذ هروب: إن علق المكتب على نسخة قديمة */
+function flushApp(){
+  if(!navigator.serviceWorker||!navigator.serviceWorker.controller){
+    toast(L('لا توجد ذاكرة محفوظة','Nothing cached'));return;
+  }
+  sheet('<h3>'+L('تحديث التطبيق','Refresh the app')+'</h3>'+
+  '<div class="note">'+L('يُمسح ملف التطبيق المحفوظ ويُحمَّل من جديد. بياناتك لا تُمسّ — فهي محفوظة منفصلة عن التطبيق.',
+    'The cached app file is cleared and re-downloaded. Your data is untouched; it is stored separately.')+'</div>'+
+  '<button class="btn" onclick="navigator.serviceWorker.controller.postMessage(\'eec:flush\')">'+
+    L('امسح واعِد التحميل','Clear and reload')+'</button>');
+}
+
 Store.loadKV(function(){
   Repo.load();
   restoreSession();
   if(Session.user)runChecks();
   render();
+  markNet();
+  initSW();
 });
 </script>
 </body>
