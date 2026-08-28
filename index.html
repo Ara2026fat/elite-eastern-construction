@@ -26,7 +26,12 @@ input,select,textarea{font-family:inherit;font-size:16px;width:100%;padding:11px
 border-radius:11px;background:var(--white);color:var(--ink);-webkit-appearance:none}
 input:focus,select:focus,textarea:focus{outline:2px solid var(--jade);outline-offset:-1px}
 .num{font-variant-numeric:tabular-nums;direction:ltr;unicode-bidi:isolate}
-.app{width:100%;max-width:540px;min-height:100vh;position:relative;padding-bottom:calc(74px + env(safe-area-inset-bottom))}
+/* أي عنصر يتجاوز العرض كان يدفع الصفحة كلها جانبًا. clip يقصّ الزائد
+   ولا ينشئ حاوية تمرير، فيبقى الشريط العلوي لاصقًا كما هو. */
+.app{width:100%;max-width:540px;min-height:100vh;position:relative;overflow-x:clip;
+  padding-bottom:calc(74px + env(safe-area-inset-bottom))}
+@supports not (overflow-x:clip){.app{overflow-x:hidden}}
+html,body{max-width:100%}
 
 /* login */
 .login{width:100%;max-width:420px;min-height:100vh;display:flex;flex-direction:column;justify-content:center;padding:26px}
@@ -109,14 +114,29 @@ border-radius:17px;background:var(--ink);color:#fff;font-size:25px;display:grid;
 .p-p small{font-size:10.5px;font-weight:500;color:var(--faint);margin-inline-start:3px}
 .p-m{display:flex;gap:11px;font-size:11.5px;color:var(--muted);margin-top:8px;padding-top:8px;border-top:1px solid var(--line)}
 .p-m b{font-weight:700;color:var(--ink)}
-.board{display:flex;gap:8px;overflow-x:auto;padding-bottom:6px;margin:0 -14px;padding-inline:14px}
+.board{display:flex;gap:8px;overflow-x:auto;padding-bottom:6px;margin:0 -14px;padding-inline:14px;
+  scroll-snap-type:x proximity;overscroll-behavior-x:contain}
 .board::-webkit-scrollbar{display:none}
-.col{flex:0 0 158px}
-.ch{font-size:11.5px;font-weight:800;color:var(--muted);padding:0 3px 6px;display:flex;justify-content:space-between}
-.dc{background:var(--white);border-radius:12px;padding:10px;margin-bottom:6px;width:100%;text-align:start}
+/* تدرّج على الحافة يقول «هنا يكمل» — بدونه يُقرأ القصّ كخطأ لا كتمرير */
+.boardw{position:relative}
+.boardw:after{content:'';position:absolute;top:0;bottom:6px;inset-inline-end:0;width:26px;
+  background:linear-gradient(to left,var(--mineral),transparent);pointer-events:none}
+html[dir=ltr] .boardw:after{background:linear-gradient(to right,var(--mineral),transparent)}
+.swipe{font-size:11.5px;color:var(--muted);text-align:center;padding:2px 0 8px;letter-spacing:.02em}
+/* العمود كان ضيّقًا فتخرج الأسماء الطويلة منه. يتّسع مع الشاشة ويلتقط عند التمرير */
+.col{flex:0 0 min(70vw,196px);scroll-snap-align:start;min-width:0}
+.ch{font-size:11.5px;font-weight:800;color:var(--muted);padding:0 3px 6px;display:flex;
+  justify-content:space-between;gap:6px}
+.ch span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dc{background:var(--white);border-radius:12px;padding:10px;margin-bottom:6px;width:100%;
+  text-align:start;min-width:0}
 .dc.st{border-inline-start:3px solid var(--saff)}
-.dc .t{font-weight:700;font-size:13px}.dc .s{font-size:11px;color:var(--muted)}
-.dc .v{font-weight:800;font-size:13px;margin-top:4px}
+/* اسم عميل أو عنوان عقار طويل يلتفّ سطرين ثم ينقطع، ولا يدفع البطاقة خارج الشاشة */
+.dc .t,.dc .s{overflow-wrap:anywhere;word-break:break-word;display:-webkit-box;
+  -webkit-box-orient:vertical;overflow:hidden}
+.dc .t{font-weight:700;font-size:13px;line-height:1.4;-webkit-line-clamp:2}
+.dc .s{font-size:11px;color:var(--muted);line-height:1.45;-webkit-line-clamp:2}
+.dc .v{font-weight:800;font-size:13px;margin-top:4px;white-space:nowrap}
 .tiles{display:grid;grid-template-columns:1fr 1fr;gap:9px}
 .tile{background:var(--white);border-radius:15px;padding:14px;text-align:start;position:relative}
 .tile .i{width:36px;height:36px;border-radius:11px;background:var(--mineral);display:grid;place-items:center;font-size:17px;margin-bottom:8px}
@@ -125,7 +145,11 @@ border-radius:17px;background:var(--ink);color:#fff;font-size:25px;display:grid;
 .f{margin-bottom:12px}
 .f label{display:block;font-size:12.5px;color:var(--muted);margin-bottom:5px;font-weight:700}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.pick{display:flex;gap:5px;flex-wrap:wrap}
+.pick{display:flex;gap:5px;flex-wrap:wrap;min-width:0}
+.pk{max-width:100%;overflow-wrap:anywhere}
+.bubble{overflow-wrap:anywhere;word-break:break-word}
+.sheet{overflow-x:hidden}
+.rt,.rs,.rn{overflow-wrap:anywhere;min-width:0}
 .pk{padding:8px 13px;border:1.5px solid var(--line);border-radius:11px;font-size:13.5px;background:var(--white);color:var(--muted)}
 .pk.on{background:var(--jade);border-color:var(--jade);color:#fff;font-weight:700}
 .pk.a.on{background:var(--clay);border-color:var(--clay)}
@@ -1023,6 +1047,17 @@ function alertsView(){
     if(d>=7)items.push({k:'w',t:t('owner_report')+' — '+contactOf(asset(m).owner_id).name_ar,
       s:L('لم يُرسل هذا الأسبوع','Not sent this week'),a:L('أرسله','Send'),go:'owner:'+m.id});
   });
+  /* موعد بلا تأكيد أخطر من موعد بلا تذكير — لأن العميل قد لا يعلم به أصلًا */
+  Repo.where('viewings',function(v){return v.status==='مجدولة';}).forEach(function(v){
+    var hh=(new Date(v.when)-new Date())/36e5;
+    if(hh<=0)return;
+    if(!v.confirmed_at)items.unshift({k:'a',t:contactOf(v.contact_id).name_ar,
+      s:L('معاينة مجدولة بلا تأكيد — '+whenAr(v.when),'Viewing scheduled but never confirmed'),
+      a:L('أكّد الموعد الآن','Confirm it now'),go:'vconfirm:'+v.id});
+    else if(hh<=24&&!v.reminded_at)items.push({k:'w',t:contactOf(v.contact_id).name_ar,
+      s:L('معاينة اليوم — لم يُرسل تذكير','Viewing today — no reminder sent'),
+      a:L('ذكّره','Remind'),go:'vremind:'+v.id});
+  });
   Repo.where('requirements',function(r){return r.status==='active'&&slaState(r)==='breached';}).forEach(function(r){
     items.push({k:'a',t:contactOf(r.contact_id).name_ar,
       s:L('طلبه مفتوح منذ '+Math.round(hoursSince(r.created_at))+' ساعة','Open '+Math.round(hoursSince(r.created_at))+'h'),
@@ -1090,6 +1125,8 @@ function jump(x){
   if(p[0]==='team')return go('team',0);
   if(p[0]==='publish')return publishSheet(p[1]);
   if(p[0]==='market')return marketAct(p[1]);
+  if(p[0]==='vconfirm')return viewMsgSheet(p[1],'confirm');
+  if(p[0]==='vremind')return viewMsgSheet(p[1],'remind');
   if(p[0]==='owner')return ownerReport(p[1]);
   if(p[0]==='client')return clientReport(p[1]);
   if(p[0]==='stmt')return ownerStatement(p[1]);
@@ -1175,6 +1212,7 @@ VIEWS.props=function(){
         :(mState(m)==='متاح'
           ?'<button class="btn s o" onclick="viewingSheet(\''+m.id+'\')">'+t('viewing')+'</button>'+
            '<button class="btn s g" onclick="publishSheet(\''+m.id+'\')">'+L('نشر','Publish')+'</button>'+
+           '<button class="btn s g" onclick="cardSheet(\''+m.id+'\')">'+L('بطاقة','Card')+'</button>'+
            (m.source==='own'?'<button class="btn s g" onclick="ownerReport(\''+m.id+'\')">'+t('owner_report')+'</button>':'')
           :(ct?'<button class="btn s o" onclick="go(\'money\',1)">'+L('العقد','Contract')+'</button>':'')))+
        '<button class="btn s g" onclick="docSheet(\'asset\',\''+a.id+'\')">'+L('مستندات','Docs')+(dcount?' ('+dcount+')':'')+'</button>')+
@@ -1195,7 +1233,8 @@ VIEWS.deals=function(){
       '<div class="rs">'+(m?mandateTitle(m):'—')+' · <span class="num">'+M(d.value)+'</span></div></div>'+
       '<div class="rv"><span class="tag t-'+(ct?'g':'w')+'">'+(ct?esc(ct.no):L('بلا عقد','No contract'))+'</span></div></button>';}).join('')
     :'';
-  return head+'<div class="board">'+STAGES.map(function(st){
+  return head+'<div class="swipe">'+L('اسحب جانبًا لبقية المراحل','Swipe for the other stages')+'</div>'+
+    '<div class="boardw"><div class="board">'+STAGES.map(function(st){
     var inS=deals.filter(function(d){return d.stage===st[0];});
     return '<div class="col"><div class="ch"><span>'+bi(st)+'</span><b class="num">'+inS.length+'</b></div>'+
     inS.map(function(d){var m=Repo.find('mandates',d.mandate_id),c=contactOf(d.contact_id);
@@ -1205,7 +1244,7 @@ VIEWS.deals=function(){
       '<div class="t">'+esc(c.name_ar)+'</div><div class="s">'+(m?mandateTitle(m):'—')+'</div>'+
       '<div class="v num">'+M(d.value)+'</div>'+
       '<div class="s num">'+days+' '+t('day')+(nVw?' · '+nVw+'👁':'')+(nOff?' · '+nOff+'₪':'')+'</div></button>';}).join('')+
-    '</div>';}).join('')+'</div>';
+    '</div>';}).join('')+'</div></div>';
 };
 
 function viewingsView(){
@@ -2364,7 +2403,9 @@ function runChecks(){
   Repo.where('viewings',function(v){return v.status==='مجدولة';}).forEach(function(v){
     var h=(new Date(v.when)-new Date())/36e5;
     if(h>0&&h<=24){var m=Repo.find('mandates',v.mandate_id);
-      pushNotif('vw:'+v.id,'معاينة خلال ٢٤ ساعة — '+(m?mandateTitle(m):''),'Viewing within 24h','alert');}
+      pushNotif('vw:'+v.id,'معاينة خلال ٢٤ ساعة — '+(m?mandateTitle(m):''),'Viewing within 24h','alert');
+      if(!v.reminded_at)pushTask('vwr:'+v.id,'تذكير العميل بموعد المعاينة',
+        todayStr(),v.by,'viewing',v.id);}
     if(h<0)pushTask('vwt:'+v.id,'تسجيل نتيجة المعاينة',todayStr(),v.by,'viewing',v.id);
   });
   /* وعود تجاوزت المهلة */
@@ -3152,6 +3193,134 @@ function adLic(m){
     ? {no:m.ad_licence,exp:m.ad_expiry||null,own:true}
     : (o.ad_licence?{no:o.ad_licence,exp:o.ad_expiry||null,own:false}:null);
 }
+/* ── بطاقة العرض ───────────────────────────────────────────────
+   السوق يتعامل في واتساب بالصور: تُقرأ وتُعاد إرسالها، والنص لا.
+   والصورة إعلان — فتحمل رقم الترخيص كما يحمله الإعلان المكتوب،
+   وتخضع لنفس القيد: لا بطاقة لعقار لسنا وكلاءه.
+──────────────────────────────────────────────────────────────── */
+var CARD_W=1080,CARD_H=1350;
+function cardFont(px,w){
+  return (w||600)+' '+px+'px -apple-system,"SF Arabic","Segoe UI","Noto Sans Arabic",system-ui,sans-serif';
+}
+function fitText(ctx,txt,max,start,min){
+  var px=start;
+  do{ ctx.font=cardFont(px,700); if(ctx.measureText(txt).width<=max)break; px-=4; }while(px>min);
+  return px;
+}
+function drawCard(mid){
+  var m=Repo.find('mandates',mid),a=asset(m),o=Repo.find('offices',Session.office.id)||{};
+  var cv=document.createElement('canvas');cv.width=CARD_W;cv.height=CARD_H;
+  var x=cv.getContext('2d');
+  if(!x)return null;
+  x.direction='rtl'; x.textAlign='right';
+  var R=CARD_W-88;                                  /* حافة اليمين */
+
+  var g=x.createLinearGradient(0,0,CARD_W,CARD_H);
+  g.addColorStop(0,'#0C5B50');g.addColorStop(.62,'#0A4F45');g.addColorStop(1,'#06231F');
+  x.fillStyle=g;x.fillRect(0,0,CARD_W,CARD_H);
+
+  x.strokeStyle='rgba(201,162,39,.16)';x.lineWidth=2;   /* شبكية خافتة كخلفية الصفحة */
+  for(var i=-CARD_H;i<CARD_W;i+=54){x.beginPath();x.moveTo(i,0);x.lineTo(i+CARD_H,CARD_H);x.stroke();}
+
+  x.strokeStyle='#C9A227';x.lineWidth=6;
+  x.strokeRect(44,44,CARD_W-88,CARD_H-88);
+
+  x.fillStyle='#C9A227';x.font=cardFont(34,600);
+  x.fillText((m.purpose==='بيع'?'للبيع':'للإيجار'),R,150);
+
+  var title=a.type+' — '+a.hood;
+  var tp=fitText(x,title,CARD_W-190,86,48);
+  x.fillStyle='#F6F4EF';x.font=cardFont(tp,700);
+  x.fillText(title,R,262);
+
+  x.fillStyle='rgba(246,244,239,.62)';x.font=cardFont(36,400);
+  x.fillText(a.city||'',R,320);
+
+  x.fillStyle='#C9A227';x.fillRect(CARD_W-88-140,364,140,5);
+
+  var specs=[];
+  if(a.beds)specs.push(a.beds+' غرف');
+  if(a.baths)specs.push(a.baths+' دورات مياه');
+  if(a.area)specs.push(M(a.area)+' م²');
+  var sy=452;
+  x.font=cardFont(40,500);
+  specs.forEach(function(t2){
+    x.fillStyle='rgba(246,244,239,.9)';x.fillText(t2,R,sy);
+    x.fillStyle='#C9A227';x.beginPath();x.arc(R+22,sy-13,7,0,6.3);x.fill();
+    sy+=76;
+  });
+
+  x.fillStyle='rgba(201,162,39,.12)';
+  roundRect(x,88,sy+24,CARD_W-176,182,26);x.fill();
+  x.strokeStyle='rgba(201,162,39,.45)';x.lineWidth=3;
+  roundRect(x,88,sy+24,CARD_W-176,182,26);x.stroke();
+  x.fillStyle='rgba(246,244,239,.6)';x.font=cardFont(32,400);
+  x.fillText(m.purpose==='بيع'?'السعر':'الإيجار السنوي',R-34,sy+96);
+  x.fillStyle='#C9A227';x.font=cardFont(78,700);
+  x.fillText(M(m.price)+' ريال',R-34,sy+178);
+
+  var by=CARD_H-300;
+  x.strokeStyle='rgba(201,162,39,.3)';x.lineWidth=2;
+  x.beginPath();x.moveTo(88,by);x.lineTo(CARD_W-88,by);x.stroke();
+
+  x.fillStyle='#F6F4EF';x.font=cardFont(42,700);
+  x.fillText(shortName(),R,by+70);
+  x.fillStyle='rgba(246,244,239,.75)';x.font=cardFont(44,600);
+  x.fillText(o.phone||'',R,by+136);
+
+  var lic=adLic(m);
+  x.fillStyle='rgba(246,244,239,.5)';x.font=cardFont(26,400);
+  x.fillText('ترخيص إعلاني: '+((lic&&lic.no)||'—')+'   ·   فال: '+(o.fal||'—'),R,by+196);
+  x.fillText('سجل تجاري: '+(o.cr||'—'),R,by+236);
+  return cv;
+}
+function roundRect(x,l,t,w,h,r){
+  x.beginPath();
+  x.moveTo(l+r,t);x.arcTo(l+w,t,l+w,t+h,r);x.arcTo(l+w,t+h,l,t+h,r);
+  x.arcTo(l,t+h,l,t,r);x.arcTo(l,t,l+w,t,r);x.closePath();
+}
+function cardSheet(mid){
+  var m=Repo.find('mandates',mid);
+  if(isMarket(m))return sheet('<h3>'+L('بطاقة عرض','Listing card')+'</h3>'+
+    '<div class="note">'+L('لا تُصنع بطاقة لعقار رصدناه ولسنا وكلاءه — البطاقة إعلان.',
+      'No card for a property we do not represent. The card is an advertisement.')+'</div>');
+  if(!adOK(m))return sheet('<h3>'+L('بطاقة عرض','Listing card')+'</h3>'+
+    '<div class="note">'+L('البطاقة إعلان يحمل رقم الترخيص. سجّل الترخيص الإعلاني أولًا.',
+      'The card is an advertisement and carries the licence number. Record it first.')+'</div>'+
+    '<button class="btn" onclick="publishSheet(\''+mid+'\')">'+L('سجّل الترخيص','Record the licence')+'</button>');
+  var cv=drawCard(mid);
+  if(!cv)return toast(L('تعذّر إنشاء البطاقة','Could not build the card'));
+  var url=cv.toDataURL('image/jpeg',0.92);
+  sheet('<h3>'+L('بطاقة عرض','Listing card')+'</h3>'+
+  '<div class="sub">'+mandateTitle(m)+'</div>'+
+  '<img src="'+url+'" alt="" style="width:100%;border-radius:14px;display:block">'+
+  '<div class="note" style="margin-top:11px">'+L('صورة جاهزة للإرسال في واتساب أو النشر. رقم الترخيص مطبوع عليها، فلا يُنسى.',
+    'Ready to send on WhatsApp. The licence number is printed on it, so it cannot be forgotten.')+'</div>'+
+  '<button class="btn" onclick="saveCard(\''+mid+'\')">'+L('حفظ الصورة','Save the image')+'</button>'+
+  '<button class="btn o" onclick="shareCard(\''+mid+'\')">'+L('إرسال','Share')+'</button>');
+}
+function saveCard(mid){
+  var cv=drawCard(mid); if(!cv)return;
+  var m=Repo.find('mandates',mid),a=asset(m);
+  var el2=document.createElement('a');
+  el2.href=cv.toDataURL('image/jpeg',0.92);
+  el2.download=(a.type+'-'+a.hood+'-'+M(m.price)).replace(/[^\u0600-\u06FF\w-]/g,'')+'.jpg';
+  document.body.appendChild(el2);el2.click();document.body.removeChild(el2);
+  logAct('mandate',mid,'card','أُنشئت بطاقة عرض','Listing card created');
+  toast(L('حُفظت الصورة','Saved'));
+}
+function shareCard(mid){
+  var cv=drawCard(mid); if(!cv)return;
+  if(!(navigator.share&&navigator.canShare))return saveCard(mid);
+  cv.toBlob(function(b){
+    var f=new File([b],'card.jpg',{type:'image/jpeg'});
+    if(!navigator.canShare({files:[f]}))return saveCard(mid);
+    navigator.share({files:[f],text:adText(mid)}).then(function(){
+      logAct('mandate',mid,'card_shared','أُرسلت بطاقة العرض','Listing card shared');
+    }).catch(function(){});
+  },'image/jpeg',0.92);
+}
+
 function adOK(m){
   if(isMarket(m))return false;      /* لسنا وكلاءه — لا إعلان ولا نشر */
   var l=adLic(m); if(!l||!l.no)return false;
@@ -3208,7 +3377,8 @@ function publishSheet(id){
     '<div class="sec">'+L('نص الإعلان','The advertisement')+'</div>'+
     '<div class="bubble">'+esc(adText(id))+'</div>'+
     '<button class="btn" onclick="copyReport('+JSON.stringify(adText(id))+')">'+
-      L('انسخ النص للنشر','Copy it for publishing')+'</button>'
+      L('انسخ النص للنشر','Copy it for publishing')+'</button>'+
+    '<button class="btn o" onclick="cardSheet(\''+id+'\')">'+L('بطاقة صورة','Image card')+'</button>'
    :'<div class="note">'+L('لا تُفتح قنوات النشر قبل تسجيل رقم الترخيص الإعلاني. الإعلان بلا رقمه مخالفة على المكتب — والمنع هنا أرخص من الغرامة هناك.',
       'Channels stay closed until the advertising licence number is on file.')+'</div>')+
   '<button class="btn g" onclick="closeSheet();render()">'+t('close')+'</button>');
@@ -3421,8 +3591,81 @@ function saveViewing(mid,dealId){
   Repo.flush();
   logAct('viewing',v.id,'scheduled','جُدولت معاينة — '+contactOf(cid).name_ar,'Viewing scheduled');
   closeSheet();
-  if(d){go('deals');dealSheet(d.id);}else go('deals',1);
-  toast(L('جُدولت المعاينة','Viewing scheduled'));
+  if(d)go('deals'); else go('deals',1);
+  /* التأكيد يُعرض الآن لا لاحقًا — ما يُؤجَّل لا يُرسل */
+  viewMsgSheet(v.id,'confirm');
+}
+
+/* وقت مقروء بالعربية: «الخميس ٤ سبتمبر، ٥:٣٠ مساءً» */
+function whenAr(iso){
+  var d=new Date(iso);
+  if(isNaN(d))return String(iso||'');
+  var days=['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
+  var mons=['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+  var h=d.getHours(),mm=d.getMinutes();
+  var ap=h<12?'صباحًا':(h<15?'ظهرًا':'مساءً');
+  var h12=h%12; if(!h12)h12=12;
+  return days[d.getDay()]+' '+d.getDate()+' '+mons[d.getMonth()]+'، '+
+    h12+':'+(mm<10?'0':'')+mm+' '+ap;
+}
+/* نصّان لا واحد: تأكيد عند الحجز، وتذكير في اليوم نفسه */
+function viewMsg(id,kind){
+  var v=Repo.find('viewings',id); if(!v)return '';
+  var m=Repo.find('mandates',v.mandate_id),a=m?asset(m):{},c=contactOf(v.contact_id);
+  var o=Session.office,V=[];
+  if(kind==='remind'){
+    V.push('تذكير بموعد اليوم');
+    V.push('');
+    V.push(a.type+' — '+a.hood+(a.city?'، '+a.city:''));
+    V.push(whenAr(v.when));
+    if(v.meet)V.push('مكان اللقاء: '+v.meet);
+    V.push('');
+    V.push('إن طرأ ما يمنعكم، أخبرونا الآن ونعيد الموعد بلا حرج.');
+  }else{
+    V.push('تأكيد موعد المعاينة');
+    V.push('');
+    V.push('أهلًا '+c.name_ar+'، حجزنا لكم معاينة:');
+    V.push('');
+    V.push('العقار: '+a.type+' — '+a.hood+(a.city?'، '+a.city:''));
+    if(m)V.push('السعر المطلوب: '+M(m.price)+' ريال'+(m.purpose==='إيجار'?' سنويًا':''));
+    if(a.beds)V.push('الغرف: '+a.beds+(a.area?' · المساحة: '+M(a.area)+' م²':''));
+    V.push('الموعد: '+whenAr(v.when));
+    if(v.meet)V.push('مكان اللقاء: '+v.meet);
+    V.push('');
+    V.push('نصل قبلكم بعشر دقائق. وإن تعذّر الموعد أخبرونا مسبقًا ونعيد ترتيبه — لا حرج في ذلك.');
+  }
+  V.push('');
+  V.push(o.name_ar+(o.fal?'\nرخصة فال: '+o.fal:''));
+  return V.join('\n');
+}
+function viewMsgSheet(id,kind){
+  var v=Repo.find('viewings',id),c=contactOf(v.contact_id),tx=viewMsg(id,kind);
+  sheet('<h3>'+(kind==='remind'?L('تذكير الموعد','Reminder'):L('تأكيد الموعد','Confirmation'))+'</h3>'+
+  '<div class="sub">'+esc(c.name_ar)+' · '+esc(whenAr(v.when))+'</div>'+
+  '<div class="bubble">'+esc(tx)+'</div>'+
+  '<div class="note" style="margin-top:11px">'+L('الموعد الضائع أغلى من كل ما سبقه: سيارة ومفتاح ومالك انتظر. التأكيد رسالة واحدة تمنع ذلك.',
+    'A missed viewing costs more than everything before it. One message prevents it.')+'</div>'+
+  '<button class="btn" onclick="sendView(\''+id+'\',\''+kind+'\','+JSON.stringify(c.phone||'')+','+JSON.stringify(tx)+')">'+t('send')+'</button>'+
+  '<button class="btn g" onclick="copyReport('+JSON.stringify(tx)+')">'+L('انسخ','Copy')+'</button>');
+}
+function sendView(id,kind,ph,tx){
+  var f={}; f[kind==='remind'?'reminded_at':'confirmed_at']=nowISO();
+  Repo.update('viewings',id,f);
+  logAct('viewing',id,kind==='remind'?'reminded':'confirmed',
+    kind==='remind'?'أُرسل تذكير الموعد':'أُرسل تأكيد الموعد',
+    kind==='remind'?'Reminder sent':'Confirmation sent');
+  send(ph,tx);render();
+}
+/* لم يحضر: حقيقة تُسجَّل لا تُنسى. عميلان متخلّفان يغيّران ترتيب الأولوية. */
+function noShow(id){
+  var v=Repo.find('viewings',id),c=contactOf(v.contact_id);
+  Repo.update('viewings',id,{status:'لم يحضر',done_at:nowISO()});
+  var n=Repo.where('viewings',function(x){
+    return x.contact_id===v.contact_id&&x.status==='لم يحضر';}).length;
+  logAct('viewing',id,'no_show','لم يحضر العميل — '+c.name_ar+' ('+n+')','Client did not show up');
+  if(n>=2)notify(c.name_ar+' تخلّف عن '+n+' مواعيد — أكّد قبل كل موعد قادم',
+    c.name_ar+' has missed '+n+' viewings','alert');
+  closeSheet();render();toast(L('سُجّل عدم الحضور','Recorded'));
 }
 
 function completeViewing(id){
@@ -3434,7 +3677,8 @@ function completeViewing(id){
     return '<button class="pk" onclick="setInt(this,\''+x[0]+'\')">'+bi(x)+'</button>';}).join('')+'</div></div>'+
   '<div class="f"><label>'+L('ما لم يعجبه — قائمة محددة','What he disliked — fixed list')+'</label><div class="pick">'+
   OBJECTIONS.map(function(o){return '<button class="pk a" onclick="togObj(this,\''+o[0]+'\')">'+bi(o)+'</button>';}).join('')+'</div></div>'+
-  '<button class="btn" onclick="saveViewingResult(\''+id+'\')">'+t('save')+'</button>');
+  '<button class="btn" onclick="saveViewingResult(\''+id+'\')">'+t('save')+'</button>'+
+  '<button class="btn g" onclick="noShow(\''+id+'\')">'+L('لم يحضر العميل','The client did not show')+'</button>');
 }
 function setInt(el,v){vDraft.interest=v;var ps=document.getElementById('ip').children;
   for(var i=0;i<ps.length;i++)ps[i].className='pk';el.className='pk on';}
