@@ -683,12 +683,15 @@ function wa(ph,tx){var d=String(ph||'').replace(/\D/g,'');var e=d.charAt(0)==='0
    ونفتح الرابط بنقرة وصلة مُركَّبة لا بـ location.href — المتصفح
    يحجب الانتقال الخارجي أحيانًا، ولا يحجب نقرة المستخدم. */
 function openLink(url){
+  /* في التبويب نفسه لا في تبويب جديد: الجوال يحجب النوافذ الجديدة،
+     ورابط wa.me ينادي التطبيق فلا تُغادر الصفحة أصلًا. */
   try{
     var a=document.createElement('a');
-    a.href=url; a.target='_blank'; a.rel='noopener';
+    a.href=url; a.rel='noopener';
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     return true;
-  }catch(e){ try{ location.href=url; return true; }catch(e2){ return false; } }
+  }catch(e){}
+  try{ location.href=url; return true; }catch(e2){ return false; }
 }
 function send(ph,tx){
   var d=String(ph||'').replace(/\D/g,'');
@@ -4497,7 +4500,9 @@ function sendView(id,kind,ph,tx){
   logAct('viewing',id,kind==='remind'?'reminded':'confirmed',
     kind==='remind'?'أُرسل تذكير الموعد':'أُرسل تأكيد الموعد',
     kind==='remind'?'Reminder sent':'Confirmation sent');
-  send(ph,tx);render();
+  /* التسجيل والرسم أولًا، والانتقال آخر أمر — إعادة الرسم بعده تُلغيه */
+  closeSheet();render();
+  send(ph,tx);
 }
 /* لم يحضر: حقيقة تُسجَّل لا تُنسى. عميلان متخلّفان يغيّران ترتيب الأولوية. */
 function noShow(id){
@@ -4996,7 +5001,8 @@ function markSent(rid,ph,tx){
   var r=Repo.find('requirements',rid);
   Repo.update('requirements',rid,{sent:(r.sent||0)+1,first_sent_at:r.first_sent_at||nowISO(),last_sent_at:nowISO()});
   logAct('requirement',rid,'report_sent','أُرسل تقرير للعميل','Client report sent');
-  send(ph,tx);closeSheet();render();toast(L('أُرسل — الوعد أُوفي به','Sent — promise kept'));
+  closeSheet();render();toast(L('أُرسل — الوعد أُوفي به','Sent — promise kept'));
+  send(ph,tx);
 }
 
 function contactSheet(id){
@@ -5814,8 +5820,12 @@ function ownerTrackSend(mid){
 function sendOwnerTrack(mid,ph,tx){
   logAct('mandate',mid,'owner_update','أُرسلت متابعة للمالك','Owner update sent');
   Repo.update('mandates',mid,{owner_update_at:nowISO()});
-  send(ph,tx);render();
+  sendOut(ph,tx);
 }
+
+/* كل ما يخرج من النظام يمرّ من هنا. الترتيب واحد في كل مرة:
+   يُسجَّل، تُغلق الشاشة، تُرسم، ثم يُنتقل — والانتقال آخر أمر دائمًا. */
+function sendOut(ph,tx){ closeSheet(); render(); return send(ph,tx); }
 
 /* ════════════════════════════════════════════════════════════════
    13 · BOOT
