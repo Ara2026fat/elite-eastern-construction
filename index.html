@@ -356,13 +356,13 @@ ar:{
  sub_all:'الكل',sub_own:'لدينا',sub_partner:'مكتب شريك',sub_sourced:'من مالك',sub_market:'السوق',
  sub_board:'اللوحة',sub_views:'المعاينات',sub_losses:'الخسائر',
  sec_match:'المطابقة',sec_clients:'العملاء',sec_reports:'التقارير',sec_money:'المالية',
- sec_chan:'قنوات النشر',sec_net:'الشبكة',sec_srv:'الخدمات',sec_portal:'البوابة العامة',
+ sec_chan:'قنوات النشر',sec_net:'الشبكة',sec_srv:'الخدمات',sec_portal:'واجهة العميل',sec_own:'صفحة المالك',
  sec_admin:'المستخدمون',sec_log:'سجل النشاط',sec_tasks:'المهام والمواعيد',
  sec_notif:'الإشعارات',sec_settings:'الإعدادات',
  d_match:'طلب ⇄ عرض مع سبب واضح',d_clients:'ملاك، مشترون، مستأجرون',
  d_reports:'تقرير المالك وتقرير العميل',d_money:'عمولات وعقود ودفعات',
  d_chan:'أين نُشر ومن أين جاء الاستفسار',d_net:'المسوّقون والمكاتب الشريكة',
- d_srv:'تحصيل وصيانة ومصروفات ومستحقات المالك',d_portal:'ما يراه الباحث عن عقار',
+ d_srv:'تحصيل وصيانة ومصروفات ومستحقات المالك',d_portal:'ما يراه الباحث، ويطلبه، ويتابعه',d_own:'ماذا جرى لعقاري — بالوقائع',
  d_admin:'الحسابات والأدوار والصلاحيات',d_log:'من فعل ماذا ومتى',
  d_tasks:'متابعات ومواعيد',d_notif:'ما يحتاج انتباهك',d_settings:'المكتب والرسائل والنسخ',
  add:'إضافة',save:'حفظ',cancel:'إلغاء',close:'إغلاق',send:'إرسال',approve:'اعتماد',reject:'رفض',
@@ -401,13 +401,13 @@ en:{
  sub_all:'All',sub_own:'Ours',sub_partner:'Partner',sub_sourced:'From owner',sub_market:'Market',
  sub_board:'Board',sub_views:'Viewings',sub_losses:'Losses',
  sec_match:'Matching',sec_clients:'Clients',sec_reports:'Reports',sec_money:'Finance',
- sec_chan:'Channels',sec_net:'Network',sec_srv:'Services',sec_portal:'Public portal',
+ sec_chan:'Channels',sec_net:'Network',sec_srv:'Services',sec_portal:'Client portal',sec_own:'Owner page',
  sec_admin:'Users',sec_log:'Activity log',sec_tasks:'Tasks',
  sec_notif:'Notifications',sec_settings:'Settings',
  d_match:'Request ⇄ listing with a stated reason',d_clients:'Owners, buyers, tenants',
  d_reports:'Owner and client reports',d_money:'Commissions, contracts, payments',
  d_chan:'Where published and where enquiries come from',d_net:'Marketers and partner offices',
- d_srv:'Collection, maintenance, expenses and owner dues',d_portal:'What a seeker sees',
+ d_srv:'Collection, maintenance, expenses and owner dues',d_portal:'What a seeker sees, asks and tracks',d_own:'What happened to my property',
  d_admin:'Accounts, roles and permissions',d_log:'Who did what and when',
  d_tasks:'Follow-ups and appointments',d_notif:'What needs attention',d_settings:'Office, messages, backup',
  add:'Add',save:'Save',cancel:'Cancel',close:'Close',send:'Send',approve:'Approve',reject:'Reject',
@@ -856,7 +856,8 @@ var SECS={
    ['المصروفات','Expenses'],['الفنيون','Providers']]},
  tasks:{ic:'✓',t:'sec_tasks',d:'d_tasks',subs:[]},
  notif:{ic:'🔔',t:'sec_notif',d:'d_notif',subs:[]},
- portal:{ic:'◎',t:'sec_portal',d:'d_portal',subs:[]},
+ portal:{ic:'◎',t:'sec_portal',d:'d_portal',subs:[['المعروض','Listings'],['الوارد','Inbox'],['متابعة','Track']]},
+ own:{ic:'⌂',t:'sec_own',d:'d_own',subs:[['عقاراتهم','Their properties'],['المستحقات','Dues']]},
  admin:{ic:'🛡',t:'sec_admin',d:'d_admin',subs:[['المستخدمون','Users'],['الأدوار','Roles']]},
  log:{ic:'≡',t:'sec_log',d:'d_log',subs:[['الكل','All'],['الصفقات','Deals'],['المالية','Finance'],['العقارات','Properties']]},
  settings:{ic:'⚙',t:'sec_settings',d:'d_settings',subs:[['المكتب','Office'],['الرسائل','Messages'],['البيانات','Data']]}
@@ -903,7 +904,7 @@ function badges(){
   var cb=Repo.where('collabs',function(c){return c.status==='new';}).length;
   return {today:eq+br,reqs:Repo.where('requirements',function(r){return r.status==='active'&&slaState(r)!=='answered';}).length,
     props:Repo.where('mandates',function(m){return m.status!=='معتمد';}).length,
-    deals:Repo.all('deals').length,more:cb};
+    deals:Repo.all('deals').length+requestedViewings().length,more:cb+requestedViewings().length};
 }
 
 function loginView(){
@@ -1327,8 +1328,14 @@ VIEWS.deals=function(){
 
 function viewingsView(){
   var vs=Repo.all('viewings');
-  if(!vs.length)return '<div class="empty"><b>'+t('nothing')+'</b></div>';
-  return '<div class="note">'+L('اعتراض العميل قائمة محددة لا نص حر — النص الحر لا يمكن جمعه ولا الاستدلال به أمام المالك.',
+  /* ما طلبه العميل يسبق ما جدوله المكتب — الطلب المعلّق يُفقد،
+     والموعد المؤكد لا يُفقد. */
+  var rq=requestedViewings();
+  var pre=rq.length?'<div class="sec">'+L('طلبات معاينة من العملاء','Client viewing requests')+
+    ' <b class="num">'+rq.length+'</b></div>'+rq.map(requestRow).join(''):'';
+  vs=vs.filter(function(v){return v.status!=='مطلوبة';});
+  if(!vs.length)return pre+(pre?'':'<div class="empty"><b>'+t('nothing')+'</b></div>');
+  return pre+'<div class="note">'+L('اعتراض العميل قائمة محددة لا نص حر — النص الحر لا يمكن جمعه ولا الاستدلال به أمام المالك.',
    'Objections are a controlled list, not free text — free text cannot be tallied or shown to an owner.')+'</div>'+
   vs.sort(function(a,b){return new Date(b.when)-new Date(a.when);}).map(function(v){
     var m=Repo.find('mandates',v.mandate_id),c=contactOf(v.contact_id);
@@ -1361,7 +1368,8 @@ VIEWS.more=function(){
    srv:managedMandates().length+Repo.where('services',function(x){return x.status!=='منجز';}).length,
    tasks:Repo.where('tasks',function(x){return x.status==='open';}).length,
    notif:Repo.where('notifications',function(x){return !x.read;}).length,
-   portal:liveMandates().length,admin:Repo.all('users').length,log:Repo.all('activity').length,settings:0};
+   portal:requestedViewings().length+Repo.where('requirements',function(r){return r.source==='الموقع'&&r.status==='active';}).length,
+   own:ownerMandates().length,admin:Repo.all('users').length,log:Repo.all('activity').length,settings:0};
   return '<div class="note">'+L('كل قسم موجود من البداية — حتى ما لن يُستخدم اليوم. لا شيء يُبنى مرتين.',
    'Every section exists from day one, including what is not used yet. Nothing gets built twice.')+'</div>'+
   '<div class="tiles">'+Object.keys(SECS).map(function(k){
@@ -1679,7 +1687,12 @@ VIEWS.chan=function(){
       '<div class="bars '+(pct<30?'a':pct<60?'w':'')+'"><i style="width:'+pct+'%"></i></div></div>'+
       '<div class="rv"><div class="rn num">'+pct+'%</div></div></div>';}).join('');
   }
-  return liveMandates().map(function(m){
+  var lm=liveMandates();
+  /* مكتب في يومه الأول: الشاشة الفارغة تُقال صراحةً ولا تُترك بيضاء */
+  if(!lm.length)return '<div class="empty"><b>'+L('لا عرض حيّ بعد','No live listing yet')+'</b>'+
+    L('سجّل عقارًا أولًا، ثم اختر قنوات نشره من هنا',
+      'Add a property first, then choose its publishing channels here')+'</div>';
+  return lm.map(function(m){
     return '<div class="k"><div class="rt">'+mandateTitle(m)+'</div>'+
     '<div class="chips">'+((m.channels||[]).length?m.channels.map(function(c){return '<span class="chip">'+c+'</span>';}).join('')
       :'<span class="chip no">'+L('لم يُنشر','Not published')+'</span>')+'</div>'+
@@ -2610,6 +2623,16 @@ function searchAll(q){
       why:why,go:function(){closeSheet();go('money',1);}});
   });
 
+  Repo.all('requirements').forEach(function(r){
+    var c=contactOf(r.contact_id);
+    var why = (d0.length>=3&&digits(reqRef(r)).indexOf(d0)>-1)?'مرجع الطلب'
+            : hit(c.name_ar)?'اسم العميل' : null;
+    if(!why)return;
+    out.push({k:'req',t:c.name_ar+' · '+reqRef(r),
+      s:(r.purpose||'')+' · '+M(r.min)+'–'+M(r.max),
+      why:why,go:function(){closeSheet();clientReport(r.id);}});
+  });
+
   Repo.all('deals').forEach(function(d){
     var c=contactOf(d.contact_id);
     if(!hit(c.name_ar)&&!num(d.value))return;
@@ -3293,6 +3316,9 @@ function parseIntake(txt){
     else if(/السعر/.test(k))out.price=+digits(v)||0;
     else if(/الغرف/.test(k))out.beds=+digits(v)||0;
     else if(/ملاحظة/.test(k))out.note=v;
+    else if(/المرجع|رقم العقار/.test(k))out.ref=v;
+    else if(/معاينة/.test(k))out.wantView=!/^(لا|no)/i.test(v);
+    else if(/الموعد المفضل|الموعد المفضّل/.test(k))out.when=v;
     else if(/هاتف|جوال|رقم/.test(k))out.phone=digits(v);
   });
   /* الغرض بلغة الصفحة ← الغرض بلغة النظام */
@@ -3433,16 +3459,32 @@ function saveIntake(){
     toast(L('سُجّل العرض — أكمل المساحة والغرف','Listing saved — complete the details'));
     return;
   }
-  var r=Repo.insert('requirements',{contact_id:c.id,purpose:p.sys,types:[p.type],
-    cities:p.city?[p.city]:[],hoods:p.hood?[p.hood]:[],
+  /* الرسالة تحمل مرجع عقار: يُربط بها الاستفسار والطلب معًا،
+     وإلا صار «سألت عن هذا العقار» كلامًا لا سجلًّا. */
+  var hit=p.ref?refFind(p.ref):null;
+  var lm=(hit&&hit.kind==='mandate')?hit.row:null, la=lm?asset(lm):null;
+  var r=Repo.insert('requirements',{contact_id:c.id,purpose:lm?lm.purpose:p.sys,
+    types:[la?la.type:p.type],
+    cities:la?(la.city?[la.city]:[]):(p.city?[p.city]:[]),
+    hoods:la?(la.hood?[la.hood]:[]):(p.hood?[p.hood]:[]),
     min:p.min||0,max:p.max||99999999,beds:p.beds||0,
     status:'active',assigned_to:c.assigned_to,sent:0,source:'الموقع',
-    pay_pref:p.pay||null,note:p.note||''});
-  logAct('requirement',r.id,'website','طلب من الموقع — '+(p.name||''),'Requirement from the website');
+    pay_pref:p.pay||null,note:p.note||'',from_mandate:lm?lm.id:null});
+  logAct('requirement',r.id,'website','طلب من الموقع — '+(p.name||'')+' · '+reqRef(r),
+    'Requirement from the website');
+  if(lm){
+    var eqs=Repo.where('enquiries',function(e){return e.phone===phone&&!e.mandate_id;});
+    if(eqs.length)Repo.update('enquiries',eqs[eqs.length-1].id,{mandate_id:lm.id});
+  }
+  if(p.wantView&&lm)newRequestViewing(lm.id,c.id,p.when||null,p.note||'');
   var k=match(r).length;
-  pDraft=null;closeSheet();go('match');
-  toast(k?L('وُجد '+k+' مطابق فورًا','Found '+k+' matches now')
-         :L('لا مطابق — أرسل ردًّا صريحًا خلال المهلة','No match — send an honest reply in time'));
+  pDraft=null;closeSheet();
+  if(p.wantView&&lm){go('portal',1);toast(L('سُجّل الطلب وطلب المعاينة — '+reqRef(r),
+    'Request and viewing ask recorded — '+reqRef(r)));return;}
+  go('match');
+  toast(k?L('وُجد '+k+' مطابق — المرجع '+reqRef(r),'Found '+k+' matches — '+reqRef(r))
+         :L('لا مطابق — المرجع '+reqRef(r)+' — أرسل ردًّا صريحًا',
+            'No match — '+reqRef(r)+' — send an honest reply'));
 }
 
 function propSheet(){
@@ -5046,6 +5088,667 @@ function doReset(){
   sheet('<h3>'+t('reset')+'</h3><div class="sub">'+L('سيُحذف كل شيء ويعود للبيانات الأولية','Everything will be replaced by seed data')+'</div>'+
   '<button class="btn r" onclick="Repo.reset();closeSheet();render();toast(\''+t('saved')+'\')">'+t('reset')+'</button>'+
   '<button class="btn g" onclick="closeSheet()">'+t('cancel')+'</button>');
+}
+
+/* ════════════════════════════════════════════════════════════════
+   12E · المرحلة الثالثة — دورة العميل من طرفها إلى طرفها
+   العقار ← العميل ← الطلب ← المطابقة ← التواصل ← المعاينة ←
+   العرض ← التفاوض ← الصفقة ← العقد ← الدفع ← الإغلاق
+
+   ثلاث واجهات على قاعدة واحدة: المكتب يرى الكل، العميل يرى طلبه،
+   المالك يرى عقاره. ولا تتسرّب بيانات طرف إلى الآخر.
+   ════════════════════════════════════════════════════════════════ */
+
+/* ── المرجع ───────────────────────────────────────────────────
+   بلا رقم يُذكر، لا متابعة. العميل يقول «ط-٠٠٤٢» فيصل المكتب
+   إلى طلبه في ثانية، والمالك يقول «ع-٠٠١٧» فيصل إلى عقاره. */
+function reqRef(r){
+  return 'ط-'+String(r&&r.id||'').replace(/\D/g,'').slice(-4).padStart(4,'0');
+}
+/* الحرف قبل الرقم ليس زينة: «ط-٠٠٠١» طلب و«ع-٠٠٠١» عقار، وقد
+   يحملان الأرقام نفسها. من أهمل الحرف أوصل العميل إلى عقار غيره. */
+function refFind(code){
+  var c=String(code||'').trim();
+  var d=digits(c); if(d.length<3)return null;
+  var wantReq=/^\s*ط/.test(c)||/^\s*R/i.test(c);
+  var wantMan=/^\s*ع/.test(c)||/^\s*P/i.test(c);
+  var r=Repo.all('requirements').filter(function(x){return digits(reqRef(x))===d;})[0];
+  var m=Repo.all('mandates').filter(function(x){return digits(refOf(x))===d;})[0];
+  if(wantReq)return r?{kind:'req',row:r}:null;
+  if(wantMan)return m?{kind:'mandate',row:m}:null;
+  if(r)return {kind:'req',row:r};
+  if(m)return {kind:'mandate',row:m};
+  return null;
+}
+
+/* ── الرحلة ───────────────────────────────────────────────────
+   اثنتا عشرة خطوة تُقرأ في سطر واحد. لا تُحسب من حقل واحد بل من
+   الوقائع: هل تمّت معاينة؟ هل قُدّم عرض؟ هل وُقّع عقد؟ */
+var JOURNEY=[['العقار','Property'],['العميل','Client'],['الطلب','Request'],['المطابقة','Match'],
+  ['التواصل','Contact'],['المعاينة','Viewing'],['العرض','Offer'],['التفاوض','Negotiation'],
+  ['الصفقة','Deal'],['العقد','Contract'],['الدفع','Payment'],['الإغلاق','Closing']];
+
+function journeyOfDeal(d){
+  if(!d)return 2;
+  var vs=Repo.where('viewings',function(v){return v.deal_id===d.id;});
+  var os=Repo.where('offers',function(o){return o.deal_id===d.id;});
+  var ct=Repo.all('contracts').filter(function(c){return c.deal_id===d.id;})[0];
+  var i=4;                                        /* صفقة مفتوحة = تواصل تمّ */
+  if(vs.length)i=5;
+  if(vs.filter(function(v){return v.status==='تمت';}).length)i=5;
+  if(os.length)i=6;
+  if(os.length>1||os.filter(function(o){return o.status==='مضاد';}).length)i=7;
+  if(d.agreed||d.stage==='اتفاق')i=8;
+  if(ct)i=9;
+  if(ct){
+    var ps=Repo.where('payments',function(p){return p.contract_id===ct.id;});
+    if(ps.filter(function(p){return (p.paid||0)>0;}).length)i=10;
+  }
+  if(d.stage==='مغلقة'||d.stage==='عقد'&&ct&&ct.status!=='نشط')i=11;
+  if(isClosed&&isClosed(d)&&d.stage!=='خسارة')i=11;
+  return i;
+}
+function journeyRail(i,note){
+  return '<div class="sec">'+L('الرحلة','The journey')+' <b class="num">'+(i+1)+'/12</b></div>'+
+  '<div class="chips" style="gap:4px">'+JOURNEY.map(function(s,k){
+    var on=k<=i, now=k===i;
+    return '<span class="chip'+(on?'':' no')+'" style="'+
+      (now?'background:var(--jade);color:#fff;border-color:var(--jade);font-weight:700':
+       on?'background:rgba(10,79,69,.10);border-color:rgba(10,79,69,.28)':'opacity:.45')+
+      ';font-size:11px;padding:4px 8px">'+bi(s)+'</span>';}).join('')+'</div>'+
+  (note?'<div class="rs wrap" style="margin-top:6px;color:var(--muted)">'+esc(note)+'</div>':'');
+}
+/* الخطوة التالية تُقال صراحة، وإلا وقف الجميع ينتظر بعضهم */
+function nextStepText(d){
+  var i=journeyOfDeal(d);
+  var A=['—','—','—','—',
+    'جدولة معاينة','تسجيل نتيجة المعاينة','تسجيل عرض السعر','الردّ على العرض',
+    'تحرير العقد','تسجيل أول دفعة','متابعة بقية الدفعات','أُغلقت'];
+  var E=['—','—','—','—','Schedule a viewing','Record the outcome','Record the offer',
+    'Respond to the offer','Draw up the contract','Record the first payment',
+    'Follow the remaining payments','Closed'];
+  return L(A[i]||'—',E[i]||'—');
+}
+
+/* ── طلبات المعاينة ───────────────────────────────────────────
+   المعاينة التي يطلبها العميل ليست مجدولة بعد: المفتاح عند المالك
+   والوقت عند المكتب. فتدخل صفًّا يُقرّ أو يُعتذر عنه، ولا تختلط
+   بالمواعيد المؤكدة فيظنها الموظف محسومة. */
+function requestedViewings(){
+  return Repo.where('viewings',function(v){return v.status==='مطلوبة';});
+}
+function newRequestViewing(mid,cid,pref,note){
+  var v=Repo.insert('viewings',{mandate_id:mid,contact_id:cid,deal_id:null,
+    when:pref||nowISO(),status:'مطلوبة',interest:null,obj:[],meet:'',
+    asked_at:nowISO(),ask_note:note||'',by:null});
+  var c=contactOf(cid),m=Repo.find('mandates',mid);
+  logAct('viewing',v.id,'requested','طلب العميل معاينة — '+c.name_ar+' · '+(m?mandateTitle(m):''),
+    'Client requested a viewing');
+  notify('طلب معاينة من '+c.name_ar+' — '+(m?mandateTitle(m):''),'Viewing requested','alert');
+  pushTask('vqr:'+v.id,'الردّ على طلب معاينة — '+c.name_ar,todayStr(),nextAssignee(),'viewing',v.id);
+  Repo.flush();
+  return v;
+}
+/* الإقرار يفتح شاشة الجدولة نفسها — لا مسار ثانٍ يُصان مرتين */
+function confirmRequest(id){
+  var v=Repo.find('viewings',id); if(!v)return;
+  Repo.remove('viewings',id);
+  closeSheet();
+  viewingSheet(v.mandate_id,null);
+  setTimeout(function(){
+    var s=document.getElementById('vc'); if(s)s.value=v.contact_id;
+    var w=document.getElementById('vw');
+    if(w&&v.when)w.value=String(v.when).slice(0,16);
+  },40);
+}
+function declineRequestSheet(id){
+  var v=Repo.find('viewings',id),c=contactOf(v.contact_id);
+  sheet('<h3>'+L('اعتذار عن الموعد','Decline the request')+'</h3>'+
+  '<div class="sub">'+esc(c.name_ar)+'</div>'+
+  '<div class="note">'+L('الاعتذار الصريح أرحم من الصمت — والصمت يُفقد العميل ولا يُسجَّل سببه.',
+    'A clear decline is kinder than silence, and silence leaves no reason on file.')+'</div>'+
+  '<div class="pick">'+[['العقار حُجز','Property reserved'],['المالك غير متاح','Owner unavailable'],
+    ['خارج نطاق الخدمة','Out of area'],['لا يطابق طلبه','Does not match']].map(function(x){
+    return '<button class="pk a" onclick="declineRequest(\''+id+'\',\''+x[0]+'\')">'+bi(x)+'</button>';}).join('')+
+  '</div>');
+}
+function declineRequest(id,why){
+  var v=Repo.find('viewings',id),c=contactOf(v.contact_id);
+  Repo.update('viewings',id,{status:'مُعتذر',reason:why,done_at:nowISO()});
+  logAct('viewing',id,'declined','اعتُذر عن طلب معاينة — '+why,'Viewing request declined');
+  closeSheet();render();toast(L('سُجّل — أبلغ العميل','Recorded — tell the client'));
+}
+function requestRow(v){
+  var m=Repo.find('mandates',v.mandate_id),c=contactOf(v.contact_id);
+  return '<div class="r top"><div class="ic a">⏳</div><div class="rm">'+
+  '<div class="rt">'+esc(c.name_ar)+' <span class="rs num">'+esc(c.phone||'')+'</span></div>'+
+  '<div class="rs">'+(m?mandateTitle(m):'—')+'</div>'+
+  '<div class="rs num">'+L('يفضّل','prefers')+' '+esc(String(v.when).slice(0,16).replace('T',' '))+'</div>'+
+  (v.ask_note?'<div class="rs wrap">«'+esc(v.ask_note)+'»</div>':'')+
+  '<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">'+
+  '<button class="btn s" onclick="confirmRequest(\''+v.id+'\')">'+L('أقِرّ وجدوِل','Confirm')+'</button>'+
+  '<button class="btn s g" onclick="declineRequestSheet(\''+v.id+'\')">'+L('اعتذر','Decline')+'</button>'+
+  '</div></div><div class="rv"><span class="tag t-a">'+L('مطلوبة','Requested')+'</span>'+
+  '<div class="rs num" style="margin-top:3px">'+Math.round(hoursSince(v.asked_at||v.created_at))+' '+t('hour')+'</div>'+
+  '</div></div>';
+}
+
+/* ════════════════════════════════════════════════════════════════
+   واجهة العميل — ما يراه هو، بالضبط
+   لا اسم مالك، ولا جواله، ولا سعر أرضي، ولا اسم عميل آخر.
+   الشاشة تعمل فعلًا: بحث، تصفية، تفصيل، طلب، ومتابعة.
+   ════════════════════════════════════════════════════════════════ */
+var PF={purpose:'',city:'',hood:'',type:'',min:0,max:0,beds:0};
+function pfSet(k,v){ PF[k]=(PF[k]===v?'':v); if(k==='city')PF.hood=''; render(true); }
+function pfNum(){ PF.min=+val('pfmin')||0; PF.max=+val('pfmax')||0; PF.beds=+val('pfbeds')||0;
+  PF.hood=val('pfhood')||''; render(true); }
+function pfClear(){ PF={purpose:'',city:'',hood:'',type:'',min:0,max:0,beds:0}; render(true); }
+
+function portalList(){
+  return webListings().filter(function(m){
+    var a=asset(m);
+    if(PF.purpose&&m.purpose!==PF.purpose)return false;
+    if(PF.city&&a.city!==PF.city)return false;
+    if(PF.hood&&a.hood!==PF.hood)return false;
+    if(PF.type&&a.type!==PF.type)return false;
+    if(PF.min&&+m.price<PF.min)return false;
+    if(PF.max&&+m.price>PF.max)return false;
+    if(PF.beds&&+(a.beds||0)<PF.beds)return false;
+    return true;
+  }).sort(function(x,y){return new Date(y.created_at)-new Date(x.created_at);});
+}
+function pfActive(){ return !!(PF.purpose||PF.city||PF.hood||PF.type||PF.min||PF.max||PF.beds); }
+
+VIEWS.portal=function(){
+  if(SUB===1)return portalReqView();
+  if(SUB===2)return portalTrackView();
+
+  var all=webListings(),rows=portalList();
+  var blocked=Repo.where('mandates',function(m){
+    return !isMarket(m)&&m.status==='معتمد'&&mState(m)==='متاح'&&
+      m.purpose!=='إدارة أملاك'&&(m.channels||[]).indexOf('الموقع')>-1&&!adOK(m);
+  });
+
+  var h='<div class="note">'+L('هذه الشاشة هي واجهة العميل نفسها لا صورة عنها — ما تراه هنا يراه هو، وما لا يظهر هنا لا يخرج من النظام: لا اسم مالك ولا جواله ولا سعره الأدنى.',
+   'This is the client-facing screen itself, not a mock. What is hidden here never leaves the system: no owner name, phone or floor price.')+'</div>';
+
+  if(blocked.length)h+='<div class="note" style="border-color:var(--clay)"><b class="num">'+blocked.length+'</b> '+
+    L('عقارًا اختاره المكتب للموقع لكن رخصته الإعلانية ناقصة أو منتهية — محجوب عن العميل حتى تُسجَّل.',
+      'chosen for the website but missing a valid advertising licence — hidden from the client until it is on file.')+'</div>';
+
+  h+='<div class="grid3"><div class="m g"><div class="t">'+L('معروض','Published')+'</div><div class="v num">'+all.length+'</div></div>'+
+   '<div class="m"><div class="t">'+L('بعد التصفية','Filtered')+'</div><div class="v num">'+rows.length+'</div></div>'+
+   '<div class="m a"><div class="t">'+L('طلبات معاينة','Viewing asks')+'</div><div class="v num">'+requestedViewings().length+'</div></div></div>';
+
+  /* التصفية */
+  h+='<div class="sec">'+L('التصفية','Filter')+(pfActive()?' <button class="btn s g" style="width:auto;padding:3px 10px;margin-inline-start:8px" onclick="pfClear()">'+L('مسح','Clear')+'</button>':'')+'</div>';
+  h+='<div class="f"><label>'+L('الغرض','Purpose')+'</label><div class="pick">'+
+   [['إيجار','Rent'],['بيع','Sale']].map(function(x){
+     return '<button class="pk '+(PF.purpose===x[0]?'on':'')+'" onclick="pfSet(\'purpose\',\''+x[0]+'\')">'+bi(x)+'</button>';}).join('')+'</div></div>';
+  h+='<div class="f"><label>'+L('المدينة','City')+'</label><div class="pick">'+CITIES.map(function(cy){
+     return '<button class="pk '+(PF.city===cy?'on':'')+'" onclick="pfSet(\'city\',\''+cy+'\')">'+esc(cy)+'</button>';}).join('')+'</div></div>';
+  if(PF.city)h+='<div class="f"><label>'+t('district')+'</label><select id="pfhood" onchange="pfNum()">'+
+   '<option value="">'+L('كل الأحياء','All districts')+'</option>'+
+   hoodsOf(PF.city).map(function(x){
+     return '<option '+(PF.hood===x?'selected':'')+'>'+esc(x)+'</option>';}).join('')+'</select></div>';
+  h+='<div class="f"><label>'+t('type')+'</label><div class="pick">'+TYPES.slice(0,8).map(function(x){
+     return '<button class="pk '+(PF.type===x[0]?'on':'')+'" onclick="pfSet(\'type\',\''+x[0]+'\')">'+bi(x)+'</button>';}).join('')+'</div></div>';
+  h+='<div class="two"><div class="f"><label>'+L('من','From')+'</label>'+
+   '<input id="pfmin" type="number" inputmode="numeric" value="'+(PF.min||'')+'" onchange="pfNum()"></div>'+
+   '<div class="f"><label>'+L('إلى','To')+'</label>'+
+   '<input id="pfmax" type="number" inputmode="numeric" value="'+(PF.max||'')+'" onchange="pfNum()"></div></div>'+
+   '<div class="f"><label>'+t('rooms')+' — '+L('على الأقل','at least')+'</label>'+
+   '<input id="pfbeds" type="number" inputmode="numeric" value="'+(PF.beds||'')+'" onchange="pfNum()"></div>';
+
+  h+='<button class="r top" onclick="siteContract()" style="width:100%;text-align:start;margin-bottom:11px">'+
+   '<div class="ic g">⇄</div><div class="rm"><div class="rt">'+L('صيغة الربط مع الموقع العام','The public site contract')+'</div>'+
+   '<div class="rs wrap">'+L('السطور التي يجب أن يكتبها نموذج الموقع حتى يُقرأ هنا بلا إعادة كتابة',
+     'The lines the site form must write so the office reads them without retyping')+'</div></div>'+
+   '<div class="rv">›</div></button>';
+
+  h+='<div class="sec">'+L('العقارات','Properties')+' <b class="num">'+rows.length+'</b></div>';
+  if(!all.length)return h+'<div class="empty"><b>'+L('لا عقار منشور بعد','Nothing published yet')+'</b>'+
+    L('اختر «الموقع» في قنوات النشر بعد تسجيل الترخيص الإعلاني',
+      'Tick “Website” in the publishing channels once the advertising licence is on file')+'</div>';
+  if(!rows.length)return h+'<div class="empty"><b>'+L('لا نتيجة بهذه التصفية','No result')+'</b>'+
+    L('وسّع النطاق أو امسح التصفية','Widen the range or clear the filter')+'</div>';
+
+  return h+rows.map(function(m){var a=asset(m),l=adLic(m);
+    return '<button class="p" style="width:100%;text-align:start" onclick="portalDetail(\''+m.id+'\')">'+
+    '<div class="p-i" style="'+(a.photo?'background-image:url('+a.photo+')':'')+'">'+
+    (a.photo?'':(ICONS[a.type]||'🏠'))+'</div><div class="p-b">'+
+    '<div class="p-t">'+mandateTitle(m)+'</div>'+
+    '<div class="p-l">'+esc(m.purpose)+' · <span class="num">'+esc(refOf(m))+'</span></div>'+
+    '<div class="p-p num">'+M(m.price)+'<small>'+t('sar')+(m.purpose==='إيجار'?'/'+L('سنة','yr'):'')+'</small></div>'+
+    '<div class="p-m"><span><b class="num">'+(a.beds||0)+'</b> '+t('rooms')+'</span>'+
+    '<span><b class="num">'+M(a.area||0)+'</b> '+t('area')+'</span>'+
+    '<span style="margin-inline-start:auto;font-size:10.5px;opacity:.7">'+
+    L('ترخيص','Lic')+' <span class="num">'+esc((l&&l.no)||'')+'</span></span></div>'+
+    '</div></button>';}).join('');
+};
+
+/* ── العقد بين الصفحتين ───────────────────────────────────────
+   الموقع العام مستودع منفصل، ولا خادم بينهما. فالرابط هو نص
+   الرسالة نفسه: إن كتبته الصفحة بهذا الترتيب قرأه النظام سجلًّا
+   كاملًا، وإن غُيّر سطر صار الطلب كتابةً يدوية من جديد. */
+function intakeSpec(){
+  return [
+    'طلب جديد من الموقع',
+    'الاسم: {{name}}',
+    'الصفة: باحث',
+    'الغرض: {{إيجار|بيع}}',
+    'نوع: {{شقة|فيلا|دور|أرض|مكتب|محل تجاري|مستودع}}',
+    'المدينة: {{الجبيل البلد|الجبيل الصناعية}}',
+    'الحي: {{hood}}',
+    'الميزانية: {{min}} - {{max}}',
+    'الغرف: {{beds}}',
+    'المرجع: {{ع-0000}}',
+    'معاينة: {{نعم|لا}}',
+    'الموعد المفضّل: {{YYYY-MM-DDTHH:MM}}',
+    'ملاحظة: {{note}}',
+    'جوال: {{05XXXXXXXX}}'
+  ].join('\n');
+}
+function siteContract(){
+  var spec=intakeSpec();
+  var live=webListings()[0];
+  var demo=[
+    'طلب جديد من الموقع','الاسم: نورة العتيبي','الصفة: باحث','الغرض: إيجار',
+    'نوع: '+(live?asset(live).type:'شقة'),
+    'المدينة: '+(live?(asset(live).city||'الجبيل البلد'):'الجبيل البلد'),
+    'الحي: '+(live?(asset(live).hood||'الدانة'):'الدانة'),
+    'الميزانية: 45000 - 60000','الغرف: 3',
+    'المرجع: '+(live?refOf(live):'ع-0001'),
+    'معاينة: نعم','الموعد المفضّل: 2026-09-12T18:00',
+    'ملاحظة: أفضّل الدور الأول','جوال: 0501234567'
+  ].join('\n');
+  sheet('<h3>'+L('صيغة الربط مع الموقع','The site contract')+'</h3>'+
+  '<div class="sub">'+L('سطر لكل حقل، والترتيب لا يهم — الاسم قبل النقطتين هو المفتاح',
+    'One line per field; order does not matter — the key is what precedes the colon')+'</div>'+
+  '<div class="note">'+L('الموقع العام مستودع منفصل ولا خادم بينهما. الرابط هو نص الرسالة: إن كتبته الصفحة بهذه المفاتيح وصل الطلب سجلًّا كاملًا — عميلًا وطلبًا واستفسارًا وطلبَ معاينة — بضغطة «لصق طلب من الموقع». وإن غُيّر مفتاح عاد الإدخال يدويًا.',
+    'The public site is a separate repository with no server between them. The message text is the link: written with these keys, one paste turns it into a client, a request, an enquiry and a viewing ask. Change a key and it goes back to manual entry.')+'</div>'+
+  '<div class="sec">'+L('المفاتيح','Keys')+'</div>'+
+  '<div class="bubble">'+esc(spec)+'</div>'+
+  '<div class="sec">'+L('مثال جاهز للتجربة','A ready example')+'</div>'+
+  '<div class="bubble">'+esc(demo)+'</div>'+
+  '<div class="note">'+L('«المرجع» هو رقم العقار كما يظهر في listings.json — به يُربط الطلب بالعقار نفسه بدل تخمينه. و«معاينة: نعم» تفتح طلب موعد يصل الوارد هنا.',
+    '“المرجع” is the listing ref as it appears in listings.json — it binds the request to the exact property instead of guessing it. “معاينة: نعم” raises a viewing request in the inbox here.')+'</div>'+
+  '<button class="btn" onclick="copyReport('+JSON.stringify(spec)+')">'+L('انسخ المفاتيح','Copy the keys')+'</button>'+
+  '<button class="btn o" onclick="tryContract('+JSON.stringify(demo)+')">'+L('جرّبها الآن','Try it now')+'</button>');
+}
+/* التجربة تمرّ بالمسار الحقيقي نفسه لا بمسار عرض — وإلا لم تُثبت شيئًا */
+function tryContract(demo){
+  var p=parseIntake(demo);
+  if(!p.ok){toast(L('لم تُقرأ — راجع المفاتيح','Not parsed — check the keys'));return;}
+  pDraft=p;intakeConfirm();
+}
+
+/* صفحة العقار كما يفتحها العميل. كل ما فيها يجوز نشره — وما لا
+   يجوز غير موجود أصلًا في هذه الدالة، لا مخفيًّا بـ CSS. */
+function portalDetail(mid){
+  var m=Repo.find('mandates',mid); if(!m)return;
+  var a=asset(m),l=adLic(m),o=Repo.find('offices',Session.office.id)||{};
+  var ph=(a.photos&&a.photos.length?a.photos:(a.photo?[a.photo]:[]));
+  sheet('<h3>'+mandateTitle(m)+'</h3>'+
+  '<div class="sub">'+esc(m.purpose)+' · '+L('المرجع','Ref')+' <span class="num">'+esc(refOf(m))+'</span></div>'+
+  (ph.length?'<div style="display:flex;gap:6px;overflow-x:auto;margin-bottom:11px">'+
+    ph.slice(0,6).map(function(p){return '<div style="flex:0 0 78%;height:170px;border-radius:13px;'+
+      'background:var(--mineral) center/cover url('+p+')"></div>';}).join('')+'</div>'
+   :'<div style="height:130px;border-radius:13px;background:var(--mineral);display:flex;'+
+    'align-items:center;justify-content:center;font-size:44px;margin-bottom:11px">'+(ICONS[a.type]||'🏠')+'</div>')+
+  '<div class="hero g"><div class="t">'+t('price')+'</div><div class="v num">'+M(m.price)+'</div>'+
+  '<div class="f">'+t('sar')+(m.purpose==='إيجار'?' · '+L('سنويًا','per year'):'')+'</div></div>'+
+  '<div class="grid3">'+
+   [[a.beds||0,t('rooms')],[a.baths||0,L('دورات مياه','Baths')],[M(a.area||0),t('area')]].map(function(x){
+     return '<div class="m"><div class="t">'+x[1]+'</div><div class="v num">'+x[0]+'</div></div>';}).join('')+'</div>'+
+  (a.desc?'<div class="r"><div class="rm"><div class="rs">'+L('الوحدة','Unit')+'</div>'+
+    '<div class="rt">'+esc(a.desc)+'</div></div></div>':'')+
+  '<div class="r"><div class="rm"><div class="rs">'+L('الموقع','Location')+'</div>'+
+   '<div class="rt">'+esc(a.hood||'')+(a.city?'، '+esc(a.city):'')+'</div></div></div>'+
+  ((a.features||[]).length?'<div class="chips">'+a.features.map(function(f){
+     return '<span class="chip">'+esc(f)+'</span>';}).join('')+'</div>':'')+
+  '<div class="sec">'+L('نظاميًا','Regulatory')+'</div>'+
+  '<div class="r"><div class="ic g">⚖</div><div class="rm">'+
+   '<div class="rt num">'+L('ترخيص الإعلان','Ad licence')+' '+esc((l&&l.no)||'—')+'</div>'+
+   '<div class="rs">'+esc(o.name_ar||'')+(o.fal?' · '+L('فال','FAL')+' '+esc(o.fal):'')+'</div></div></div>'+
+  '<div class="note">'+L('لا يظهر اسم المالك ولا جواله — الوسيط هو من يتواصل.',
+    'The owner’s name and phone never appear — the broker is the point of contact.')+'</div>'+
+  '<button class="btn" onclick="portalBook(\''+mid+'\')">'+L('اطلب معاينة','Request a viewing')+'</button>'+
+  '<button class="btn o" onclick="portalAsk(\''+mid+'\')">'+L('أرسل استفسارًا','Send an enquiry')+'</button>');
+}
+
+/* العميل يطلب معاينة على عقار بعينه — يُسجَّل استفسارًا وطلبَ موعد،
+   ويدخل صفّ الإقرار عند المكتب. لا رسالة تضيع في واتساب. */
+function portalBook(mid){
+  var m=Repo.find('mandates',mid);
+  sheet('<h3>'+L('طلب معاينة','Request a viewing')+'</h3>'+
+  '<div class="sub">'+mandateTitle(m)+' · <span class="num">'+esc(refOf(m))+'</span></div>'+
+  '<div class="two"><div class="f"><label>'+L('الاسم','Name')+'</label><input id="pbn"></div>'+
+  '<div class="f"><label>'+t('phone')+'</label><input id="pbp" inputmode="tel" placeholder="05XXXXXXXX"></div></div>'+
+  '<div class="f"><label>'+L('الموعد المفضّل','Preferred time')+'</label><input id="pbw" type="datetime-local"></div>'+
+  '<div class="f"><label>'+L('ملاحظة','Note')+'</label><input id="pbnt" placeholder="'+
+   L('اختياري','optional')+'"></div>'+
+  '<div class="note">'+L('الطلب لا يُثبّت الموعد — يصل المكتب، ويُقرّ بعد التأكد من إتاحة المالك والمفتاح.',
+    'A request does not fix the time. The office confirms it once the owner and the key are available.')+'</div>'+
+  '<button class="btn" onclick="savePortalBook(\''+mid+'\')">'+L('أرسل الطلب','Send the request')+'</button>');
+}
+function savePortalBook(mid){
+  var n=val('pbn'),p=digits(val('pbp'));
+  if(!n||!p){toast(L('أكمل الاسم والجوال','Name and phone are required'));return;}
+  var m=Repo.find('mandates',mid);
+  var c=portalContact(n,p);
+  Repo.insert('enquiries',{name:n,phone:p,channel:'الموقع',mandate_id:mid,
+    msg:'طلب معاينة — '+mandateTitle(m)+' ('+refOf(m)+')'+(val('pbnt')?' · '+val('pbnt'):''),
+    triage:'new'});
+  var v=newRequestViewing(mid,c.id,val('pbw')||null,val('pbnt'));
+  closeSheet();render();
+  portalDone(L('وصل طلبكم','Your request has arrived'),
+    L('سنؤكّد الموعد بعد التأكد من إتاحة المالك. مرجع العقار: ','We will confirm once the owner is available. Property ref: ')+refOf(m),
+    c.phone);
+}
+/* استفسار عام على عقار: يُسجَّل ويُفتح له طلب فيدخل المطابقة،
+   فلا يبقى «سؤالًا» بلا أثر في النظام. */
+function portalAsk(mid){
+  var m=mid?Repo.find('mandates',mid):null;
+  sheet('<h3>'+L('أرسل استفسارًا','Send an enquiry')+'</h3>'+
+  (m?'<div class="sub">'+mandateTitle(m)+' · <span class="num">'+esc(refOf(m))+'</span></div>':
+     '<div class="sub">'+L('صف ما تبحث عنه ونطابقه بما لدينا','Tell us what you need and we will match it')+'</div>')+
+  '<div class="two"><div class="f"><label>'+L('الاسم','Name')+'</label><input id="pan"></div>'+
+  '<div class="f"><label>'+t('phone')+'</label><input id="pap" inputmode="tel" placeholder="05XXXXXXXX"></div></div>'+
+  (m?'':'<div class="f"><label>'+L('الغرض','Purpose')+'</label><div class="pick">'+
+   [['إيجار','Rent'],['بيع','Sale']].map(function(x){
+     return '<button class="pk '+(PF.purpose===x[0]?'on':'')+'" onclick="PF.purpose=\''+x[0]+'\';portalAsk()">'+bi(x)+'</button>';}).join('')+'</div></div>'+
+   '<div class="f"><label>'+t('type')+'</label><div class="pick">'+TYPES.slice(0,8).map(function(x){
+     return '<button class="pk '+(PF.type===x[0]?'on':'')+'" onclick="PF.type=\''+x[0]+'\';portalAsk()">'+bi(x)+'</button>';}).join('')+'</div></div>'+
+   '<div class="f"><label>'+L('المدينة','City')+'</label><div class="pick">'+CITIES.map(function(cy){
+     return '<button class="pk '+(PF.city===cy?'on':'')+'" onclick="PF.city=\''+cy+'\';PF.hood=\'\';portalAsk()">'+esc(cy)+'</button>';}).join('')+'</div></div>'+
+   (PF.city?'<div class="f"><label>'+t('district')+'</label><select id="pah"><option value="">—</option>'+
+     hoodsOf(PF.city).map(function(x){return '<option>'+esc(x)+'</option>';}).join('')+'</select></div>':'')+
+   '<div class="two"><div class="f"><label>'+L('الميزانية من','Budget from')+'</label>'+
+     '<input id="pamin" type="number" inputmode="numeric"></div>'+
+     '<div class="f"><label>'+L('إلى','to')+'</label><input id="pamax" type="number" inputmode="numeric"></div></div>')+
+  '<div class="f"><label>'+L('رسالتك','Your message')+'</label><input id="pam" placeholder="'+
+   L('اختياري','optional')+'"></div>'+
+  '<button class="btn" onclick="savePortalAsk('+(mid?'\''+mid+'\'':'null')+')">'+L('أرسل','Send')+'</button>');
+}
+function savePortalAsk(mid){
+  var n=val('pan'),p=digits(val('pap'));
+  if(!n||!p){toast(L('أكمل الاسم والجوال','Name and phone are required'));return;}
+  var m=mid?Repo.find('mandates',mid):null,a=m?asset(m):null;
+  var c=portalContact(n,p);
+  Repo.insert('enquiries',{name:n,phone:p,channel:'الموقع',mandate_id:mid||null,
+    msg:(m?'استفسار على '+mandateTitle(m)+' ('+refOf(m)+')':'استفسار عام')+
+      (val('pam')?' · '+val('pam'):''),triage:'new'});
+  /* الاستفسار يصير طلبًا: العقار المستفسَر عنه يحدّد النطاق، وإلا أخذناه من النموذج */
+  var r=Repo.insert('requirements',{contact_id:c.id,
+    purpose:m?m.purpose:(PF.purpose||'إيجار'),
+    types:[m?a.type:(PF.type||'شقة')],
+    cities:m?(a.city?[a.city]:[]):(PF.city?[PF.city]:[]),
+    hoods:m?(a.hood?[a.hood]:[]):((val('pah')||'')?[val('pah')]:[]),
+    min:m?Math.round(m.price*0.8):(+val('pamin')||0),
+    max:m?Math.round(m.price*1.2):(+val('pamax')||99999999),
+    beds:m?(a.beds||0):0,
+    status:'active',assigned_to:c.assigned_to,sent:0,source:'الموقع',
+    note:val('pam')||'',from_mandate:mid||null});
+  logAct('requirement',r.id,'portal','طلب من واجهة العميل — '+n+' · '+reqRef(r),
+    'Requirement from the client portal');
+  notify('طلب جديد من الموقع — '+n+' ('+reqRef(r)+')','New request from the site','alert');
+  Repo.flush();closeSheet();render();
+  portalDone(L('وصل طلبكم','Your request has arrived'),
+    L('رقم المتابعة: ','Tracking reference: ')+reqRef(r)+
+    L('. احتفظوا به لمتابعة طلبكم.','. Keep it to follow your request.'),c.phone);
+}
+function portalContact(n,p){
+  var ex=Repo.all('contacts').filter(function(c){return c.phone===p;})[0];
+  if(ex){ if(!ex.source)Repo.update('contacts',ex.id,{source:'الموقع'});
+    logAct('contact',ex.id,'portal','عميل مسجَّل تواصل عبر الواجهة العامة','Existing client used the portal');
+    return ex; }
+  return Repo.insert('contacts',{name_ar:n,name_en:n,phone:p,role:'باحث',
+    source:'الموقع',assigned_to:nextAssignee()});
+}
+function portalDone(title,body,phone){
+  sheet('<h3>'+esc(title)+'</h3>'+
+  '<div class="hero g"><div class="t">'+L('تم الاستلام','Received')+'</div>'+
+  '<div class="v">✓</div><div class="f">'+esc(String(body).replace(/\s+$/,''))+'</div></div>'+
+  '<div class="note">'+L('نردّ خلال المهلة المعلنة، ولو لم يوجد ما يناسبكم أخبرناكم بذلك صراحة.',
+    'We reply within the stated window — and if nothing suits you, we say so plainly.')+'</div>'+
+  '<button class="btn g" onclick="closeSheet();go(\'portal\',2)">'+L('متابعة الطلب','Track the request')+'</button>');
+}
+
+/* ── تبويب الطلبات الواردة من الواجهة ──────────────────────── */
+function portalReqView(){
+  var reqs=Repo.where('requirements',function(r){return r.source==='الموقع'&&r.status==='active';});
+  var rv=requestedViewings();
+  var h='<div class="note">'+L('كل ما يرسله العميل من الواجهة يصل هنا سجلًّا كاملًا — لا رسالة تُنسخ يدويًا ولا حقل يُعاد كتابته.',
+   'Everything the client sends arrives here as a full record — nothing is copied by hand or retyped.')+'</div>';
+  h+='<div class="sec">'+L('طلبات معاينة بانتظار الإقرار','Viewing requests awaiting confirmation')+
+   ' <b class="num">'+rv.length+'</b></div>';
+  h+= rv.length? rv.sort(function(a,b){return new Date(a.asked_at||a.created_at)-new Date(b.asked_at||b.created_at);})
+       .map(requestRow).join('')
+     : '<div class="empty" style="padding:14px">'+L('لا طلب معلّق','Nothing pending')+'</div>';
+  h+='<div class="sec">'+L('طلبات من الواجهة','Requests from the portal')+' <b class="num">'+reqs.length+'</b></div>';
+  if(!reqs.length)return h+'<div class="empty">'+L('لا طلب بعد','Nothing yet')+'</div>';
+  return h+reqs.sort(function(a,b){return new Date(b.created_at)-new Date(a.created_at);}).map(function(r){
+    var c=contactOf(r.contact_id),k=match(r).length,s=slaState(r);
+    var cls=s==='breached'?'a':s==='risk'?'w':s==='answered'?'g':'';
+    return '<button class="r top" onclick="clientReport(\''+r.id+'\')"><div class="ic '+cls+'">☰</div>'+
+    '<div class="rm"><div class="rt">'+esc(c.name_ar)+' <span class="rs num">'+esc(reqRef(r))+'</span></div>'+
+    '<div class="rs">'+esc(r.purpose)+' · <span class="num">'+M(r.min)+'</span>–<span class="num">'+M(r.max)+'</span></div>'+
+    '<div class="rs">'+(k?L('مطابق','matches')+' <b class="num">'+k+'</b>':L('لا مطابق بعد','no match yet'))+'</div></div>'+
+    '<div class="rv">›</div></button>';}).join('');
+}
+
+/* ── متابعة العميل لطلبه ─────────────────────────────────────
+   بجواله أو بمرجعه. يرى مرحلته لا ملفّه: لا أسعار مالك، ولا
+   ملاحظات داخلية، ولا اسم عميل آخر على العقار نفسه. */
+var TRK={q:'',res:null};
+function portalTrackView(){
+  var h='<div class="note">'+L('هذه هي شاشة المتابعة كما يفتحها العميل. اكتب جواله أو مرجع طلبه لترى ما يراه — لا أكثر.',
+   'This is the tracking screen as the client opens it. Enter their phone or reference to see exactly what they see.')+'</div>'+
+   '<div class="f"><label>'+L('الجوال أو المرجع','Phone or reference')+'</label>'+
+   '<input id="trk" value="'+esc(TRK.q)+'" placeholder="05XXXXXXXX '+L('أو','or')+' ط-0001" '+
+   'oninput="TRK.q=this.value" onchange="portalTrack()"></div>'+
+   '<button class="btn" onclick="portalTrack()">'+L('اعرض الحالة','Show status')+'</button>';
+  if(TRK.res===null)return h;
+  if(!TRK.res.length)return h+'<div class="empty"><b>'+L('لا طلب بهذا الرقم','No request found')+'</b>'+
+    L('تأكد من الجوال أو المرجع','Check the phone or the reference')+'</div>';
+  return h+TRK.res.map(trackCard).join('');
+}
+function portalTrack(){
+  var q=TRK.q||'',d=digits(q),out=[];
+  if(!q.trim()){TRK.res=null;render(true);return;}
+  var byRef=refFind(q);
+  if(byRef&&byRef.kind==='req')out.push(byRef.row);
+  if(!out.length&&d.length>=4){
+    var cs=Repo.all('contacts').filter(function(c){return digits(c.phone||'').indexOf(d)>-1;});
+    cs.forEach(function(c){
+      Repo.where('requirements',function(r){return r.contact_id===c.id;}).forEach(function(r){out.push(r);});
+    });
+  }
+  TRK.res=out;render(true);
+}
+/* بطاقة الحالة: ما وصل إليه الطلب، وما ينتظره العميل منّا */
+function trackCard(r){
+  var c=contactOf(r.contact_id);
+  var ds=Repo.where('deals',function(d){return d.contact_id===r.contact_id;});
+  var live=ds.filter(function(d){return !isClosed(d);})[0]||ds[0]||null;
+  var vs=Repo.where('viewings',function(v){return v.contact_id===r.contact_id;});
+  var wait=vs.filter(function(v){return v.status==='مطلوبة';}).length;
+  var i=live?journeyOfDeal(live):(r.sent>0?3:2);
+  var note=live?L('الخطوة القادمة: ','Next: ')+nextStepText(live)
+    :(r.sent>0?L('أُرسلت لكم العقارات المطابقة','Matching properties were sent to you')
+              :L('طلبكم قيد المطابقة الآن','Your request is being matched now'));
+  return '<div class="r top" style="display:block"><div class="rt">'+esc(c.name_ar)+
+   ' <span class="tag t-n num">'+esc(reqRef(r))+'</span></div>'+
+   '<div class="rs">'+esc(r.purpose)+' · <span class="num">'+M(r.min)+'</span>–<span class="num">'+M(r.max)+'</span>'+
+   ' · '+L('منذ','since')+' <span class="num">'+daysBetween(new Date(),r.created_at)+'</span> '+t('day')+'</div>'+
+   journeyRail(i,note)+
+   (wait?'<div class="note" style="margin-top:9px">'+L('لديكم طلب معاينة بانتظار تأكيد الموعد.',
+     'You have a viewing request awaiting confirmation.')+'</div>':'')+
+   (r.sent>0?'<div class="rs" style="margin-top:7px">'+L('عُرض عليكم','Sent to you')+
+     ' <b class="num">'+r.sent+'</b> '+L('عقارًا','properties')+'</div>':'')+
+   '<div style="margin-top:9px"><button class="btn s o" onclick="clientReport(\''+r.id+'\')">'+
+   L('افتح ملف الطلب في المكتب','Open the office record')+'</button></div></div>';
+}
+
+/* ════════════════════════════════════════════════════════════════
+   واجهة المالك — ماذا يجري لعقاري؟
+   السؤال الذي يُفقد الوكالات أكثر من السعر. الجواب هنا وقائع
+   مؤرَّخة لا وعود: كم عُرض، كم سأل، كم عايَن، ولماذا لم يُقفل.
+   ولا يظهر فيه اسم عميل ولا رقمه — التسريب يُفقد الطرفين معًا.
+   ════════════════════════════════════════════════════════════════ */
+function ownerMandates(){
+  return Repo.where('mandates',function(m){
+    return !isMarket(m)&&m.status==='معتمد';
+  });
+}
+VIEWS.own=function(){
+  var ms=ownerMandates();
+  if(SUB===1)return ownerDuesView();
+  var h='<div class="note">'+L('لكل عقار صفحة يفتحها مالكه فيرى ما جرى عليه بالوقائع لا بالوعود. ولا يظهر فيها اسم عميل ولا جواله.',
+   'Every property has a page its owner opens to see what actually happened — never a client’s name or number.')+'</div>';
+  if(!ms.length)return h+'<div class="empty"><b>'+L('لا عقار بعد','No property yet')+'</b></div>';
+  var byOwner={};
+  ms.forEach(function(m){var a=asset(m);var k=a.owner_id||'—';(byOwner[k]=byOwner[k]||[]).push(m);});
+  return h+Object.keys(byOwner).map(function(k){
+    var own=k==='—'?{name_ar:L('بلا مالك مسجَّل','No owner on file')}:contactOf(k);
+    return '<div class="sec">'+esc(own.name_ar)+' <b class="num">'+byOwner[k].length+'</b></div>'+
+    byOwner[k].map(function(m){
+      var s=ownerStats(m);
+      return '<button class="r top" onclick="ownerTrack(\''+m.id+'\')">'+
+      '<div class="ic '+(s.viewings?'g':s.enquiries?'w':'')+'">'+(ICONS[asset(m).type]||'🏠')+'</div>'+
+      '<div class="rm"><div class="rt">'+mandateTitle(m)+' <span class="rs num">'+esc(refOf(m))+'</span></div>'+
+      '<div class="rs">'+esc(m.purpose)+' · '+esc(mState(m))+' · <span class="num">'+M(m.price)+'</span></div>'+
+      '<div class="rs"><span class="num">'+s.days+'</span> '+t('day')+' · '+
+      '<span class="num">'+s.enquiries+'</span> '+L('استفسار','asks')+' · '+
+      '<span class="num">'+s.viewings+'</span> '+L('معاينة','viewings')+'</div></div>'+
+      '<div class="rv">›</div></button>';}).join('');}).join('');
+};
+function ownerStats(m){
+  var vs=Repo.where('viewings',function(v){return v.mandate_id===m.id;});
+  var ds=Repo.where('deals',function(d){return d.mandate_id===m.id;});
+  var os=[];ds.forEach(function(d){
+    Repo.where('offers',function(o){return o.deal_id===d.id;}).forEach(function(o){os.push(o);});});
+  var eq=Repo.where('enquiries',function(e){return e.mandate_id===m.id;});
+  var obj={};vs.forEach(function(v){(v.obj||[]).forEach(function(o){obj[o]=(obj[o]||0)+1;});});
+  var live=ds.filter(function(d){return !isClosed(d);})[0]||ds[0]||null;
+  return {days:daysOnMarket(m),viewings:vs.filter(function(v){return v.status==='تمت';}).length,
+    booked:vs.filter(function(v){return v.status==='مجدولة';}).length,
+    asked:vs.filter(function(v){return v.status==='مطلوبة';}).length,
+    enquiries:eq.length,deals:ds.length,offers:os,obj:obj,live:live,
+    best:os.reduce(function(a,o){return Math.max(a,+o.amount||0);},0)};
+}
+function ownerTrack(mid){
+  var m=Repo.find('mandates',mid); if(!m)return;
+  var a=asset(m),s=ownerStats(m),o=Repo.find('offices',Session.office.id)||{};
+  var au=authOf(m),l=adLic(m);
+  var objs=Object.keys(s.obj).sort(function(x,y){return s.obj[y]-s.obj[x];});
+
+  var h='<h3>'+mandateTitle(m)+'</h3>'+
+  '<div class="sub">'+L('صفحة المالك','Owner page')+' · <span class="num">'+esc(refOf(m))+'</span> · '+esc(mState(m))+'</div>'+
+  '<div class="hero '+(s.viewings?'g':'a')+'"><div class="t">'+L('في السوق منذ','On the market for')+'</div>'+
+  '<div class="v num">'+s.days+'</div><div class="f">'+t('day')+' · '+
+  L('السعر المعروض','asking')+' <span class="num">'+M(m.price)+'</span></div></div>'+
+  '<div class="grid3">'+
+   [[s.enquiries,L('سؤال','Asks')],[s.viewings,L('عايَن','Viewed')],[s.offers.length,L('عرض','Offers')]]
+   .map(function(x){return '<div class="m"><div class="t">'+x[1]+'</div><div class="v num">'+x[0]+'</div></div>';}).join('')+
+  '</div>';
+
+  h+=journeyRail(s.live?journeyOfDeal(s.live):(s.enquiries?2:(m.channels||[]).length?1:0),
+    s.live?L('الخطوة القادمة: ','Next: ')+nextStepText(s.live)
+     :((m.channels||[]).length?L('معروض ولم يصل مهتمّ جادّ بعد','Published, no serious interest yet')
+       :L('لم يُنشر بعد على أي قناة','Not published on any channel yet')));
+
+  /* القنوات والسند النظامي: المالك يسأل «أين أعلنتم؟» قبل «كم عرضتم؟» */
+  h+='<div class="sec">'+L('أين هو معروض','Where it is published')+'</div>'+
+   ((m.channels||[]).length
+    ?'<div class="chips">'+m.channels.map(function(c){return '<span class="chip">'+esc(c)+'</span>';}).join('')+'</div>'
+    :'<div class="note" style="border-color:var(--clay)">'+L('غير معروض على أي قناة — لا يُنتظر منه نتيجة.',
+      'Not published anywhere — no result should be expected.')+'</div>');
+  h+='<div class="r"><div class="ic '+(au&&au.left>=0?'g':'a')+'">⚖</div><div class="rm">'+
+   '<div class="rt">'+L('التفويض','Authorization')+'</div><div class="rs num">'+
+   (au?(au.left>=0?L('سارٍ حتى ','valid to ')+dstr(au.end):L('منتهٍ','expired')):L('غير مسجَّل','not on file'))+
+   '</div></div></div>'+
+   '<div class="r"><div class="ic '+(adOK(m)?'g':'a')+'">📄</div><div class="rm">'+
+   '<div class="rt">'+L('ترخيص الإعلان','Advertising licence')+'</div>'+
+   '<div class="rs num">'+esc((l&&l.no)||L('غير مسجَّل','not on file'))+'</div></div></div>';
+
+  /* الاعتراضات: الجواب الوحيد المقنع على «لماذا لم يُؤجَّر؟» */
+  h+='<div class="sec">'+L('ما قاله من عايَن','What viewers said')+'</div>';
+  h+= objs.length
+    ? '<div class="chips">'+objs.map(function(k){
+        return '<span class="chip no">'+esc(k)+' <b class="num">'+s.obj[k]+'</b></span>';}).join('')+'</div>'+
+      '<div class="rs wrap" style="margin-top:6px;color:var(--muted)">'+
+      L('تكرار الاعتراض على «'+objs[0]+'» '+s.obj[objs[0]]+' مرة ليس رأيًا — هو ما يمنع الإقفال.',
+        'The repeated objection on “'+objs[0]+'” is what is blocking the close.')+'</div>'
+    : '<div class="empty" style="padding:12px">'+
+      (s.viewings?L('لم يُسجَّل اعتراض بعد','No objection recorded yet')
+                 :L('لم تتم معاينة بعد','No viewing has taken place yet'))+'</div>';
+
+  if(s.best)h+='<div class="sec">'+L('أعلى عرض وصل','Best offer received')+'</div>'+
+   '<div class="hero g"><div class="v num">'+M(s.best)+'</div><div class="f">'+t('sar')+
+   ' · '+L('فرق عن المطلوب','vs asking')+' <span class="num">'+M(m.price-s.best)+'</span></div></div>';
+
+  if(s.asked||s.booked)h+='<div class="note">'+
+    (s.asked?L('طلبات معاينة بانتظار موافقتكم: ','Viewing requests awaiting your availability: ')+s.asked+'. ':'')+
+    (s.booked?L('مواعيد مؤكدة قادمة: ','Confirmed upcoming viewings: ')+s.booked+'.':'')+'</div>';
+
+  h+='<div class="note">'+L('لا يظهر في هذه الصفحة اسم أي عميل ولا رقمه — وهذا شرط بقاء ثقة الطرفين معًا.',
+    'No client name or number appears on this page — the condition on which both sides keep trusting us.')+'</div>'+
+  '<button class="btn" onclick="ownerTrackSend(\''+mid+'\')">'+L('أرسلها للمالك','Send it to the owner')+'</button>'+
+  '<button class="btn o" onclick="ownerReport(\''+mid+'\')">'+L('التقرير الكامل','Full report')+'</button>';
+  sheet(h);
+}
+/* نص المتابعة: وقائع مرقّمة، وخطوة واحدة صريحة في آخره */
+function ownerTrackText(mid){
+  var m=Repo.find('mandates',mid),a=asset(m),s=ownerStats(m);
+  var o=Repo.find('offices',Session.office.id)||{};
+  var own=a.owner_id?contactOf(a.owner_id):{name_ar:''};
+  var objs=Object.keys(s.obj).sort(function(x,y){return s.obj[y]-s.obj[x];});
+  var V=[];
+  V.push('متابعة عقاركم — '+refOf(m));
+  V.push('');
+  if(own.name_ar)V.push('أهلًا '+own.name_ar+'،');
+  V.push(unitName(a)+' — '+(a.hood||'')+(a.city?'، '+a.city:''));
+  V.push('السعر المعروض: '+M(m.price)+' ريال'+(m.purpose==='إيجار'?' سنويًا':''));
+  V.push('في السوق منذ: '+s.days+' يومًا');
+  V.push('');
+  V.push('ما جرى:');
+  V.push('• استفسارات: '+s.enquiries);
+  V.push('• معاينات تمّت: '+s.viewings);
+  if(s.booked)V.push('• مواعيد مؤكدة قادمة: '+s.booked);
+  if(s.asked)V.push('• طلبات معاينة تنتظر موعدكم: '+s.asked);
+  V.push('• عروض أسعار: '+s.offers.length+(s.best?' — أعلاها '+M(s.best)+' ريال':''));
+  if((m.channels||[]).length){V.push('');V.push('قنوات النشر: '+m.channels.join('، '));}
+  if(objs.length){
+    V.push('');
+    V.push('ما قاله من عايَن:');
+    objs.slice(0,3).forEach(function(k){V.push('• '+k+': '+s.obj[k]+' مرة');});
+  }
+  V.push('');
+  V.push('الخطوة القادمة: '+(s.live?nextStepText(s.live)
+    :((m.channels||[]).length?(objs.length?'مراجعة «'+objs[0]+'» — هو المتكرر':'الاستمرار في العرض ورفع وتيرة التواصل')
+      :'اعتماد قنوات النشر لبدء العرض')));
+  V.push('');
+  V.push(o.name_ar+(o.fal?'\nرخصة فال: '+o.fal:''));
+  return V.join('\n');
+}
+function ownerTrackSend(mid){
+  var m=Repo.find('mandates',mid),a=asset(m);
+  var own=a.owner_id?contactOf(a.owner_id):null;
+  var tx=ownerTrackText(mid);
+  sheet('<h3>'+L('متابعة المالك','Owner update')+'</h3>'+
+  '<div class="sub">'+(own?esc(own.name_ar):L('بلا مالك مسجَّل','No owner on file'))+'</div>'+
+  '<div class="bubble">'+esc(tx)+'</div>'+
+  '<div class="note" style="margin-top:11px">'+L('تُرسل ولو لم يجدّ شيء — المالك الذي لا يسمع يظن أن عقاره نُسي.',
+    'It goes out even when nothing happened — silence makes an owner think the property was forgotten.')+'</div>'+
+  (own&&own.phone?'<button class="btn" onclick="sendOwnerTrack(\''+mid+'\','+JSON.stringify(own.phone)+','+JSON.stringify(tx)+')">'+t('send')+'</button>':'')+
+  '<button class="btn g" onclick="copyReport('+JSON.stringify(tx)+')">'+L('انسخ','Copy')+'</button>');
+}
+function sendOwnerTrack(mid,ph,tx){
+  logAct('mandate',mid,'owner_update','أُرسلت متابعة للمالك','Owner update sent');
+  Repo.update('mandates',mid,{owner_update_at:nowISO()});
+  send(ph,tx);render();
 }
 
 /* ════════════════════════════════════════════════════════════════
