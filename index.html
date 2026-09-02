@@ -292,6 +292,11 @@ var Repo={
     (DB.payments||[]).forEach(function(p){ if(p.paid===undefined){p.paid=0;dirty=true;} });
     (DB.settings||[]).forEach(function(x){
       if(x.hoods&&!x.hoods_town){x.hoods_town=x.hoods;delete x.hoods;dirty=true;} });
+    /* الأرقام النظامية تُملأ إن كانت فارغة فقط — ما كتبه المكتب لا يُمسّ */
+    (DB.offices||[]).forEach(function(o){
+      if(!o.fal){o.fal=OFFICE_FAL;dirty=true;}
+      if(!o.fal_expiry){o.fal_expiry=OFFICE_FAL_EXP;dirty=true;}
+      if(!o.cr){o.cr=OFFICE_CR;dirty=true;} });
     (DB.assets||[]).forEach(function(a){
       if(a.city===undefined){a.city=cityOfHood(a.hood);dirty=true;} });
     (DB.requirements||[]).forEach(function(r){
@@ -574,12 +579,19 @@ function notify(ar,en,kind){
 /* ════════════════════════════════════════════════════════════════
    6 · SEED
    ════════════════════════════════════════════════════════════════ */
+/* ثوابت المنشأة: أرقام نظامية لا تتغيّر ولا تُطلب من المستخدم.
+   وُجودها في الملف يعني أن كل إعلان يخرج مستوفيًا من أول يوم. */
+var OFFICE_FAL='1200050709';
+var OFFICE_FAL_EXP='2027-08-27';
+var OFFICE_CR='7055013459';
+
 var Seed={build:function(){
  var oid='o1';
  var db={};
  Repo.collections.forEach(function(c){db[c]=[];});
  db.offices=[{id:oid,name_ar:'مؤسسة بناء الشرق المميز للخدمات العقارية',name_en:'Bina Al-Sharq Real Estate',city_ar:'الجبيل',city_en:'Jubail',
-   fal:'',cr:'',vat:'',phone:'0508085578',assignment:'rotation',sla_hours:24,
+   fal:OFFICE_FAL,fal_expiry:OFFICE_FAL_EXP,cr:OFFICE_CR,vat:'',
+   phone:'0508085578',assignment:'rotation',sla_hours:24,
    rate_sale:2.5,rate_rent:2.5,mgmt_fee:5,created_at:nowISO()}];
  db.users=[
   {id:'u1',name_ar:'عبدالعزيز',name_en:'Abdulaziz',phone:'0500000001',pass:'1234',role:'owner',office_id:oid,active:true,created_at:nowISO()},
