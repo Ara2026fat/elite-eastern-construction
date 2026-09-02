@@ -669,7 +669,48 @@ function sheet(h){document.getElementById('sheet').innerHTML='<div class="grab">
 function closeSheet(){document.getElementById('sh').className='sh';}
 function wa(ph,tx){var d=String(ph||'').replace(/\D/g,'');var e=d.charAt(0)==='0'?'966'+d.slice(1):d;
   return 'https://wa.me/'+e+(tx?'?text='+encodeURIComponent(tx):'');}
-function send(ph,tx){if(navigator.share)navigator.share({text:tx}).catch(function(){});else location.href=wa(ph,tx);}
+/* ── الإرسال ──────────────────────────────────────────────────
+   خللان أوقعا الرسالة في الصمت:
+
+   ١ · navigator.share يتجاهل الرقم. الرسالة موجَّهة لعميل بعينه،
+       فإرسالها عبر لوح المشاركة يُلزم الموظف بالبحث عنه يدويًا —
+       وقد يُرسلها لغيره. الرقم موجود عندنا، فيُستعمل.
+
+   ٢ · catch فارغ يبتلع كل فشل. إن مُنعت المشاركة لم يحدث شيء
+       ولم يُقَل شيء، فيظن الموظف أنها أُرسلت. لا صمت بعد اليوم:
+       إما فتحت المحادثة، أو نُسخ النص وقيل ذلك صراحة.
+
+   ونفتح الرابط بنقرة وصلة مُركَّبة لا بـ location.href — المتصفح
+   يحجب الانتقال الخارجي أحيانًا، ولا يحجب نقرة المستخدم. */
+function openLink(url){
+  try{
+    var a=document.createElement('a');
+    a.href=url; a.target='_blank'; a.rel='noopener';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    return true;
+  }catch(e){ try{ location.href=url; return true; }catch(e2){ return false; } }
+}
+function send(ph,tx){
+  var d=String(ph||'').replace(/\D/g,'');
+  /* رقم بين أيدينا: تُفتح محادثة صاحبه مباشرة، لا لوح مشاركة */
+  if(d.length>=9){
+    if(openLink(wa(ph,tx)))return true;
+  }
+  if(navigator.share){
+    return navigator.share({text:tx}).then(function(){return true;}).catch(function(){
+      /* المشاركة مُنعت أو أُلغيت — لا تُترك الرسالة في الفراغ */
+      if(d.length>=9&&openLink(wa(ph,tx)))return true;
+      copyReport(tx);
+      toast(L('تعذّر الإرسال — نُسخ النص، الصقه في المحادثة',
+              'Could not send — text copied, paste it into the chat'));
+      return false;
+    });
+  }
+  if(d.length>=9)return openLink(wa(ph,tx));
+  copyReport(tx);
+  toast(L('نُسخ النص — الصقه في المحادثة','Copied — paste it into the chat'));
+  return false;
+}
 
 function asset(m){return Repo.find('assets',m.asset_id)||{};}
 function contactOf(id){return Repo.find('contacts',id)||{name_ar:'—'};}
@@ -4932,11 +4973,24 @@ function clientReport(rid){
       '<div class="rs num">'+M(x.m.price)+'</div></div><div class="rv">\u203a</div></button>';}).join('')
    :''));
 }
+/* النسخ الصامت أسوأ من عدمه: الموظف يظنه نُسخ فيلصق فراغًا.
+   نجرّب الطريقتين، ولا نُعلن النجاح إلا عند وقوعه. */
 function copyReport(tx){
+  var done=false;
   if(navigator.clipboard&&navigator.clipboard.writeText){
-    navigator.clipboard.writeText(tx);toast(L('نُسخ','Copied'));return;
+    try{ navigator.clipboard.writeText(tx); done=true; }catch(e){ done=false; }
   }
-  toast(L('حدّد النص وانسخه','Select the text and copy'));
+  if(!done){
+    try{
+      var ta=document.createElement('textarea');
+      ta.value=tx; ta.style.position='fixed'; ta.style.opacity='0';
+      document.body.appendChild(ta); ta.focus(); ta.select();
+      done=document.execCommand('copy');
+      document.body.removeChild(ta);
+    }catch(e2){ done=false; }
+  }
+  toast(done?L('نُسخ','Copied'):L('حدّد النص وانسخه يدويًا','Select the text and copy it'));
+  return done;
 }
 function markSent(rid,ph,tx){
   var r=Repo.find('requirements',rid);
