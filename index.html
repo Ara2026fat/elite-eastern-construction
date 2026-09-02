@@ -410,14 +410,14 @@ en:{
  h_deals:'Deals',s_deals:'From interest to close',
  h_more:'All sections',s_more:'What works now and what waits',
  sub_promises:'Promises',sub_enq:'Enquiries',sub_alerts:'Alerts',
- sub_active:'Active',sub_matched:'Matched',sub_closed:'Closed',
+ sub_active:'Active',sub_matched:'Results ready',sub_closed:'Closed',
  sub_all:'All',sub_own:'Ours',sub_partner:'Partner',sub_sourced:'From owner',sub_market:'Market',
  sub_board:'Board',sub_views:'Viewings',sub_losses:'Losses',
- sec_match:'Matching',sec_clients:'Clients',sec_reports:'Reports',sec_money:'Finance',
+ sec_match:'Smart search',sec_clients:'Clients',sec_reports:'Reports',sec_money:'Finance',
  sec_chan:'Channels',sec_net:'Network',sec_srv:'Services',sec_portal:'Client portal',sec_own:'Owner page',
  sec_admin:'Users',sec_log:'Activity log',sec_tasks:'Tasks',
  sec_notif:'Notifications',sec_settings:'Settings',
- d_match:'Request ⇄ listing with a stated reason',d_clients:'Owners, buyers, tenants',
+ d_match:'Request ⇄ listing, with the reason stated',d_clients:'Owners, buyers, tenants',
  d_reports:'Owner and client reports',d_money:'Commissions, contracts, payments',
  d_chan:'Where published and where enquiries come from',d_net:'Marketers and partner offices',
  d_srv:'Collection, maintenance, expenses and owner dues',d_portal:'What a seeker sees, asks and tracks',d_own:'What happened to my property',
@@ -433,7 +433,7 @@ en:{
  open_promises:'Open promises',breached:'Breached',within:'Within window',
  no_perm:'You do not have permission for this action',
  saved:'Saved',deleted:'Deleted',
- matched:'matched',score:'match',open_deal:'Open deal',viewing:'Viewing',
+ matched:'suitable',score:'fit',open_deal:'Open deal',viewing:'Viewing',
  client_report:'Client report',owner_report:'Owner report',
  commissions:'Commissions',contracts:'Contracts',collections:'Collections',
  paid:'Paid',due:'Due',late:'Late',
@@ -2071,7 +2071,7 @@ VIEWS.settings=function(){
     '<textarea id="oh'+i+'" rows="4" style="width:100%;border:1px solid var(--line);border-radius:10px;'+
     'padding:11px;font:inherit;background:var(--paper);color:var(--ink)">'+esc(g[1].join('، '))+'</textarea></div>';}).join('')+
   '<div class="note">'+L('البحث الذكي يقارن اسم الحي نصًّا بنص. اكتبها كما تنطقونها فعلًا في المكتب، وإلا لن تظهر نتيجة.',
-   'Matching compares district names as text. Write them exactly as your office says them, or nothing will match.')+'</div>'+
+   'Smart search compares district names as text. Write them exactly as your office says them, or nothing will surface.')+'</div>'+
   '<div class="f"><label>'+L('إسناد العملاء','Client assignment')+'</label><div class="pick">'+
   [['rotation',L('بالتناوب','Rotation')],['creator',L('من سجّل أولًا','First to create')]].map(function(x){
     return '<button class="pk '+(o.assignment===x[0]?'on':'')+'" onclick="setAssign(\''+x[0]+'\')">'+x[1]+'</button>';}).join('')+
@@ -2247,7 +2247,7 @@ function contractSheet(dealId){
     '<b>'+esc(ctDraft.pref)+'</b>'+L(' — والجدول أدناه مضبوط عليه، غيّره إن اتفقتم على غيره.',
     ' — the schedule below follows it; change it if you agreed otherwise.')+'</div>':'')+
   '<div class="note">'+L('يُقفل العقار عن البحث فور تفعيل العقد، ويعود إليه تلقائيًا عند انتهائه.',
-    'The property leaves matching the moment the contract activates, and returns automatically when it ends.')+'</div>'+
+    'The property leaves the search the moment the contract activates, and returns automatically when it ends.')+'</div>'+
   '<button class="btn" onclick="createContract(\''+dealId+'\')">'+L('تفعيل العقد وتوليد الدفعات','Activate and generate the schedule')+'</button>');
 }
 function createContract(dealId){
@@ -2324,7 +2324,7 @@ function endContract(ctId){
   var ct=Repo.find('contracts',ctId);
   sheet('<h3>'+L('إنهاء العقد','End the contract')+'</h3><div class="sub">'+esc(ct.no)+'</div>'+
   '<div class="note">'+L('يعود العقار للبحث فورًا، وتبقى الدفعات المتأخرة مستحقة في التحصيل.',
-   'The property returns to matching immediately; unpaid instalments remain due in Collections.')+'</div>'+
+   'The property returns to the search immediately; unpaid instalments remain due in Collections.')+'</div>'+
   '<div class="pick">'+[['انتهت المدة','Term ended'],['إخلاء','Vacated'],['فسخ','Terminated']].map(function(r){
     return '<button class="pk a" onclick="doEnd(\''+ctId+'\',\''+r[0]+'\')">'+bi(r)+'</button>';}).join('')+'</div>');
 }
@@ -2333,7 +2333,7 @@ function doEnd(ctId,reason){
   Repo.update('contracts',ctId,{status:'منتهٍ',end_reason:reason,ended_at:nowISO()});
   if(ct.mandate_id)setState(ct.mandate_id,'متاح',reason);
   logAct('contract',ctId,'ended','انتهى العقد '+ct.no+' — '+reason,'Contract ended: '+reason);
-  notify('انتهى العقد '+ct.no+' — العقار عاد للبحث','Contract ended — property back in matching','info');
+  notify('انتهى العقد '+ct.no+' — العقار عاد للبحث','Contract ended — property back in search','info');
   closeSheet();render();toast(L('انتهى العقد وعاد العقار للبحث','Ended — property back in search'));
 }
 
@@ -2693,6 +2693,19 @@ function norm(x){
 function digits(x){return String(x||'').replace(/\D/g,'');}
 
 /* كل نتيجة تحمل: ماذا وجدنا، ولماذا طابق، وأين يذهب الوسيط */
+/* سبب ظهور النتيجة يُقال بلغة الواجهة. كان نصًّا عربيًا ثابتًا
+   يظهر كما هو للمستخدم الإنجليزي، فصار مفتاحًا يُترجم. */
+var WHY={
+  name:['الاسم','name'], phone:['الجوال','phone'],
+  hood:['الحي','district'], type:['النوع','type'],
+  unit:['وصف الوحدة','unit description'], city:['المدينة','city'],
+  price:['السعر','price'], adlic:['الترخيص الإعلاني','advertising licence'],
+  broker:['عقد الوساطة','brokerage contract'],
+  ctno:['رقم العقد','contract number'], ctval:['قيمة العقد','contract value'],
+  ref:['مرجع الطلب','request reference'], client:['اسم العميل','client name'],
+  dealval:['قيمة الصفقة','deal value']
+};
+function whyText(k){ var w=WHY[k]; return w?L(w[0],w[1]):String(k); }
 function searchAll(q){
   var s0=norm(q),d0=digits(q),out=[];
   if(s0.length<2&&d0.length<3)return out;
@@ -2700,7 +2713,7 @@ function searchAll(q){
   function num(hay){ return d0.length>=3 && digits(hay).indexOf(d0)>-1; }
 
   Repo.all('contacts').forEach(function(c){
-    var why = hit(c.name_ar)?'الاسم' : (num(c.phone)?'الجوال':null);
+    var why = hit(c.name_ar)?'name' : (num(c.phone)?'phone':null);
     if(!why)return;
     out.push({k:'contact',t:c.name_ar,s:(c.role||'')+' · '+(c.phone||''),
       why:why,go:function(){closeSheet();contactSheet(c.id);}});
@@ -2708,11 +2721,11 @@ function searchAll(q){
 
   Repo.all('mandates').forEach(function(m){
     var a=asset(m); if(!a)return;
-    var why = hit(a.hood)?'الحي' : hit(a.type)?'النوع' : (a.desc&&hit(a.desc))?'وصف الوحدة'
-            : (a.city&&hit(a.city))?'المدينة'
-            : num(m.price)?'السعر'
-            : (m.ad_licence&&num(m.ad_licence))?'الترخيص الإعلاني'
-            : (m.auth&&m.auth.official&&num(m.auth.official))?'عقد الوساطة'
+    var why = hit(a.hood)?'hood' : hit(a.type)?'type' : (a.desc&&hit(a.desc))?'unit'
+            : (a.city&&hit(a.city))?'city'
+            : num(m.price)?'price'
+            : (m.ad_licence&&num(m.ad_licence))?'adlic'
+            : (m.auth&&m.auth.official&&num(m.auth.official))?'broker'
             : null;
     if(!why)return;
     out.push({k:'mandate',t:mandateTitle(m),s:M(m.price)+' · '+mState(m),
@@ -2720,8 +2733,8 @@ function searchAll(q){
   });
 
   Repo.all('contracts').forEach(function(ct){
-    var why = num(ct.no)||hit(ct.no)?'رقم العقد'
-            : num(ct.total)?'قيمة العقد' : null;
+    var why = num(ct.no)||hit(ct.no)?'ctno'
+            : num(ct.total)?'ctval' : null;
     if(!why)return;
     out.push({k:'contract',t:ct.no,s:contactOf(ct.contact_id).name_ar+' · '+M(ct.total),
       why:why,go:function(){closeSheet();go('money',1);}});
@@ -2729,8 +2742,8 @@ function searchAll(q){
 
   Repo.all('requirements').forEach(function(r){
     var c=contactOf(r.contact_id);
-    var why = (d0.length>=3&&digits(reqRef(r)).indexOf(d0)>-1)?'مرجع الطلب'
-            : hit(c.name_ar)?'اسم العميل' : null;
+    var why = (d0.length>=3&&digits(reqRef(r)).indexOf(d0)>-1)?'ref'
+            : hit(c.name_ar)?'client' : null;
     if(!why)return;
     out.push({k:'req',t:c.name_ar+' · '+reqRef(r),
       s:(r.purpose||'')+' · '+M(r.min)+'–'+M(r.max),
@@ -2741,15 +2754,15 @@ function searchAll(q){
     var c=contactOf(d.contact_id);
     if(!hit(c.name_ar)&&!num(d.value))return;
     out.push({k:'deal',t:c.name_ar,s:(d.stage||'')+' · '+M(d.value),
-      why:hit(c.name_ar)?'اسم العميل':'قيمة الصفقة',
+      why:hit(c.name_ar)?'client':'dealval',
       go:function(){closeSheet();go('deals');dealSheet(d.id);}});
   });
 
   Repo.all('requirements').forEach(function(r){
     var c=contactOf(r.contact_id);
-    var why = hit(c.name_ar)?'اسم العميل'
-            : (r.hoods||[]).some(hit)?'الحي'
-            : (r.types||[]).some(hit)?'النوع' : null;
+    var why = hit(c.name_ar)?'client'
+            : (r.hoods||[]).some(hit)?'hood'
+            : (r.types||[]).some(hit)?'type' : null;
     if(!why)return;
     out.push({k:'req',t:c.name_ar,s:r.purpose+' · '+M(r.min)+'–'+M(r.max),
       why:why,go:function(){closeSheet();clientReport(r.id);}});
@@ -2785,7 +2798,7 @@ function searchRows(rows,KIND){
     '<div class="rm"><div class="rt">'+esc(x.t)+'</div>'+
     '<div class="rs wrap">'+esc(x.s)+'</div>'+
     '<div class="rs"><span class="tag t-n">'+bi(k)+'</span> '+
-    L('طابق في: ','matched on: ')+esc(x.why)+'</div></div>'+
+    L('ظهر بسبب: ','found by: ')+esc(whyText(x.why))+'</div></div>'+
     '<div class="rv">\u203a</div></button>';}).join('');
 }
 function searchLive(){
@@ -3482,7 +3495,7 @@ function intakeConfirm(){
   (!owner&&p.beds?row(L('الغرف','Bedrooms'),p.beds):'')+
   (p.note?row(L('ملاحظة','Note'),p.note):'')+
   (p.hood&&!known?'<div class="note">'+L('الحي «'+p.hood+'» ليس في قائمة أحيائكم. سيُحفظ كما هو، وأضِفه من الإعدادات وإلا لن يطابق.',
-    'This district is not in your list. Add it in Settings or matching will miss it.')+'</div>':'')+
+    'This district is not in your list. Add it in Settings or the search will miss it.')+'</div>':'')+
   '<div class="f" style="margin-top:12px"><label>'+t('phone')+' — '+
   L('من واتساب','from WhatsApp')+'</label><input id="pph" inputmode="tel" value="'+esc(p.phone||'')+'"></div>'+
   '<button class="btn" onclick="saveIntake()">'+
@@ -3505,7 +3518,7 @@ function docReqConfirm(){
   '<div class="f" style="margin-top:12px"><label>'+t('phone')+' — '+
   L('من واتساب','from WhatsApp')+'</label><input id="pph" inputmode="tel" value="'+esc(p.phone||'')+'"></div>'+
   '<div class="note">'+L('التوثيق إجراء نظامي على منصة إيجار، وليس بحثًا عن عقار. لا يدخل البحث الذكي ولا يُنشئ عرضًا.',
-    'Documentation is a regulatory procedure on Ejar, not a property search. It never enters matching.')+'</div>'+
+    'Documentation is a regulatory procedure on Ejar, not a property search. It never enters the smart search.')+'</div>'+
   '<button class="btn" onclick="saveDocReq()">'+L('سجّله وابدأ الإجراء','Record it and start')+'</button>'+
   '<div class="f" style="margin-top:14px"><label>'+L('أو صنّفه غير جاد','Or mark it not serious')+'</label>'+
   '<div class="pick">'+[['استفسار فقط','Enquiry only'],['لا يملك المتطلبات','Missing documents'],
@@ -3593,9 +3606,9 @@ function saveIntake(){
   if(p.wantView&&lm){go('portal',1);toast(L('سُجّل الطلب وطلب المعاينة — '+reqRef(r),
     'Request and viewing ask recorded — '+reqRef(r)));return;}
   go('match');
-  toast(k?L('وُجد '+k+' عقارًا مناسبًا — المرجع '+reqRef(r),'Found '+k+' matches — '+reqRef(r))
+  toast(k?L('وُجد '+k+' عقارًا مناسبًا — المرجع '+reqRef(r),'Found '+k+' suitable — '+reqRef(r))
          :L('لا يوجد مناسب — المرجع '+reqRef(r)+' — أرسل ردًّا صريحًا',
-            'No match — '+reqRef(r)+' — send an honest reply'));
+            'Nothing suitable — '+reqRef(r)+' — send an honest reply'));
 }
 
 function propSheet(){
@@ -3732,7 +3745,7 @@ function saveReq(){
   var k=match(r).length;
   cDraft={purpose:'إيجار',types:[],hoods:[],cities:['الجبيل البلد'],pay:null,routes:[]};hFilter='';
   closeSheet();go('match');
-  toast(k?L('وُجد '+k+' عقارًا مناسبًا','Found '+k+' matches'):L('حُفظ — أرسل تقريرًا بصراحة أنه لا يوجد مناسب','Saved — send an honest report'));
+  toast(k?L('وُجد '+k+' عقارًا مناسبًا','Found '+k+' suitable'):L('حُفظ — أرسل تقريرًا بصراحة أنه لا يوجد مناسب','Saved — send an honest report'));
 }
 
 function enqSheet(){
@@ -4425,7 +4438,7 @@ function winDeal(id){
    '<div class="rv"><div class="rn num">'+M(netOf(rows))+'</div></div></div>'
    :'<div class="note">'+L('لم يُقيَّد شيء — راجع نسبة العمولة في الإعدادات','Nothing posted — check the commission rate in Settings')+'</div>')+
   '<div class="note" style="margin-top:11px">'+L('العقار الآن «محجوز» ولا يظهر في نتائج البحث. يصير مؤجرًا أو مباعًا عند تفعيل العقد.',
-   'The property is now reserved and out of matching. It becomes leased or sold when the contract activates.')+'</div>'+
+   'The property is now reserved and out of the search. It becomes leased or sold when the contract activates.')+'</div>'+
   '<button class="btn" onclick="contractSheet(\''+id+'\')">'+L('إنشاء العقد الآن','Create the contract now')+'</button>'+
   '<button class="btn g" onclick="closeSheet();go(\'money\',0)">'+L('لاحقًا','Later')+'</button>');
 }
@@ -4858,7 +4871,7 @@ function ownerReport(mid){
    ' · '+L('التقرير','Report')+' <span class="num">'+((m.reports_sent||0)+1)+'</span></div>';
 
   if(!ct){
-    h+='<div class="grid3"><div class="m"><div class="t">'+L('يطابقونه','Matching clients')+'</div>'+
+    h+='<div class="grid3"><div class="m"><div class="t">'+L('يناسبهم','Suitable for')+'</div>'+
     '<div class="v num">'+dm.pool+'</div></div>'+
     '<div class="m g"><div class="t">'+L('يقدرون عليه','Can afford it')+'</div>'+
     '<div class="v num">'+dm.reach+'</div></div>'+
@@ -4990,7 +5003,7 @@ function clientReport(rid){
   '<div class="sub">'+esc(c.name_ar)+' · '+L('التقرير','Report')+' <span class="num">'+((r.sent||0)+1)+'</span></div>'+
   '<div class="grid3"><div class="m"><div class="t">'+L('بُحث فيه','Searched')+'</div>'+
   '<div class="v num">'+d.pool+'</div></div>'+
-  '<div class="m g"><div class="t">'+L('طابق','Matched')+'</div>'+
+  '<div class="m g"><div class="t">'+L('ظهر في البحث','Surfaced')+'</div>'+
   '<div class="v num">'+d.hits.length+'</div></div>'+
   '<div class="m a"><div class="t">'+L('استُبعد','Excluded')+'</div>'+
   '<div class="v num">'+d.rest+'</div></div></div>'+
@@ -5717,7 +5730,7 @@ function portalReqView(){
     return '<button class="r top" onclick="clientReport(\''+r.id+'\')"><div class="ic '+cls+'">☰</div>'+
     '<div class="rm"><div class="rt">'+esc(c.name_ar)+' <span class="rs num">'+esc(reqRef(r))+'</span></div>'+
     '<div class="rs">'+esc(r.purpose)+' · <span class="num">'+M(r.min)+'</span>–<span class="num">'+M(r.max)+'</span></div>'+
-    '<div class="rs">'+(k?L('مناسب','matches')+' <b class="num">'+k+'</b>':L('لا مناسب بعد','no match yet'))+'</div></div>'+
+    '<div class="rs">'+(k?L('مناسب','suitable')+' <b class="num">'+k+'</b>':L('لا مناسب بعد','none suitable yet'))+'</div></div>'+
     '<div class="rv">›</div></button>';}).join('');
 }
 
@@ -5759,8 +5772,8 @@ function trackCard(r){
   var wait=vs.filter(function(v){return v.status==='مطلوبة';}).length;
   var i=live?journeyOfDeal(live):(r.sent>0?3:2);
   var note=live?L('الخطوة القادمة: ','Next: ')+nextStepText(live)
-    :(r.sent>0?L('أُرسلت لكم العقارات المناسبة','Matching properties were sent to you')
-              :L('طلبكم قيد البحث الآن','Your request is being searched now'));
+    :(r.sent>0?L('أُرسلت لكم العقارات المناسبة','Suitable properties were sent to you')
+              :L('طلبكم قيد البحث الآن','We are searching for you now'));
   return '<div class="r top" style="display:block"><div class="rt">'+esc(c.name_ar)+
    ' <span class="tag t-n num">'+esc(reqRef(r))+'</span></div>'+
    '<div class="rs">'+esc(r.purpose)+' · <span class="num">'+M(r.min)+'</span>–<span class="num">'+M(r.max)+'</span>'+
