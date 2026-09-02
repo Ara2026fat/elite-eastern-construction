@@ -31,7 +31,7 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--jade);outline-of
    في اللوح وحده — وهو العنصر الوحيد الذي يتجاوز العرض. */
 .app{width:100%;max-width:540px;min-height:100vh;position:relative;
   padding-bottom:calc(74px + env(safe-area-inset-bottom))}
-html,body{max-width:100%;overflow-x:hidden}
+html,body{max-width:100%}
 
 /* login */
 .login{width:100%;max-width:420px;min-height:100vh;display:flex;flex-direction:column;justify-content:center;padding:26px}
@@ -45,10 +45,15 @@ html,body{max-width:100%;overflow-x:hidden}
 /* header */
 .hd{background:linear-gradient(165deg,var(--jade2),var(--jade));color:#fff;padding:12px 16px 0;
 padding-top:calc(12px + env(safe-area-inset-top));position:sticky;top:0;z-index:30;box-shadow:0 2px 14px rgba(12,26,24,.13)}
-.hr{display:flex;align-items:center;gap:8px}
-.lg{font-weight:800;font-size:14px;letter-spacing:.09em}.lg i{font-style:normal;color:var(--gold)}
-.sp{flex:1}
-.pill{border:1px solid rgba(255,255,255,.32);border-radius:20px;padding:5px 10px;font-size:11.5px;font-weight:700;white-space:nowrap}
+.hr{display:flex;align-items:center;gap:8px;min-width:0}
+/* عناصر مرنة لا تنكمش افتراضيًا. بلا هذه الأسطر يوسّع أي اسم طويل
+   الشريط عن عرض الشاشة فتنزلق الصفحة كلها جانبًا. */
+.lg{font-weight:800;font-size:14px;letter-spacing:.06em;min-width:0;flex:0 1 auto;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lg i{font-style:normal;color:var(--gold)}
+.sp{flex:1 1 auto;min-width:4px}
+.pill{border:1px solid rgba(255,255,255,.32);border-radius:20px;padding:5px 10px;font-size:11.5px;
+  font-weight:700;white-space:nowrap;flex:0 0 auto;max-width:44%;overflow:hidden;text-overflow:ellipsis}
 .pill.g{background:rgba(201,162,39,.22);border-color:rgba(201,162,39,.45)}
 .hd h1{font-size:20px;font-weight:800;margin-top:9px;letter-spacing:-.01em}
 .hd .sub{font-size:12px;opacity:.68;margin-top:1px;margin-bottom:11px}
@@ -431,6 +436,27 @@ function L(ar,en){return LANG==='en'?(en||ar):ar;}
 /* bilingual reference data */
 var TYPES=[['شقة','Apartment'],['فيلا','Villa'],['دور','Floor'],['ملحق','Annex'],['دوبلكس','Duplex'],
   ['استراحة','Rest house'],['أرض','Land'],['مكتب','Office'],['معرض','Showroom'],['محل تجاري','Shop'],['مستودع','Warehouse']];
+/* أوصاف جاهزة للضغط، وحقل حر لما لا تغطيه. الاختيار أسرع من
+   الكتابة، والكتابة الحرة تُبقي الباب مفتوحًا لما لم نتوقّعه. */
+var UNIT_DESC={
+  'شقة':['مدخل خاص','دور أرضي','دور أول','دور ثاني','دور ثالث فأعلى','مع مصعد','مفروشة','ملحق علوي'],
+  'دور':['مدخل خاص','أرضي','علوي','مع سطح','مفروش'],
+  'ملحق':['مدخل خاص','على السطح','في الحوش','مفروش'],
+  'دوبلكس':['مدخل خاص','مع حديقة','مع سطح'],
+  'فيلا':['درج داخلي','درج صالة','مع مسبح','مع ملحق','دورين','دور واحد'],
+  'استراحة':['مع مسبح','مع ملعب','قسمين','مفروشة'],
+  'مكتب':['في برج','مدخل مستقل','مفروش'],
+  'معرض':['على شارع تجاري','زاوية','مع مستودع'],
+  'محل تجاري':['على شارع تجاري','زاوية','داخل مجمع'],
+  'مستودع':['مع ساحة','باب شاحنات','مبرّد'],
+  'أرض':['على شارعين','زاوية','مخطط معتمد']
+};
+function unitOpts(type){return UNIT_DESC[type]||[];}
+/* الاسم الكامل للوحدة: النوع ووصفه معًا، كما يُقال في الرسائل */
+function unitName(a){
+  if(!a)return '';
+  return a.type+(a.desc?' '+a.desc:'');
+}
 var ICONS={'شقة':'🏢','فيلا':'🏡','دور':'🏠','ملحق':'🏘️','دوبلكس':'🏠','استراحة':'🌴','أرض':'🗺️','مكتب':'🏬','معرض':'🏬','محل تجاري':'🏪','مستودع':'📦'};
 /* أحياء الجبيل — من قوائم المكتب، لا من تقديري. تُحرَّر من الإعدادات. */
 var HOODS_TOWN=['طيبة','اليرموك','الدانة','صناعية العريفي','مخطط غرب المزارع','الحمراء','عبد اللطيف جميل','الواحة','الخالدية','الذهب','المرقاب','الجوهرة','الروضة','غرناطة','البستان','الصفاة','قرطبة','اشبيلية','العزيزية','السلام','الضباب','الطوية','التعاون'];
@@ -638,7 +664,7 @@ function contactOf(id){return Repo.find('contacts',id)||{name_ar:'—'};}
 function userName(id){var u=Repo.find('users',id);return u?(LANG==='en'?u.name_en:u.name_ar):'—';}
 function liveMandates(){return Repo.where('mandates',function(m){
   return m.status==='معتمد'&&['مسحوب','مباع'].indexOf(m.state||'متاح')<0;});}
-function mandateTitle(m){var a=asset(m);
+function mandateTitle(m){var a=asset(m);a={type:unitName(a),hood:a.hood,city:a.city};
   var amb=a.city&&!cityOfHood(a.hood);   /* حيّ باسم مشترك — بلا المدينة يلتبس */
   return (LANG==='en'?(TYPES.filter(function(x){return x[0]===a.type;})[0]||[a.type,a.type])[1]:a.type)+
   ' — '+a.hood+(amb?' · '+a.city:'');}
@@ -854,6 +880,7 @@ function render(same){
   document.getElementById('root').innerHTML=
    '<div class="app"><header class="hd"><div class="hr">'+
    '<div class="lg">'+esc(shortName())+'<i>.</i></div><div class="sp"></div>'+
+   '<button class="pill" onclick="searchSheet()" aria-label="'+L('بحث','Search')+'">⌕</button>'+
    '<button class="pill" onclick="flipLang()">'+t('lang')+'</button>'+
    '<button class="pill g" onclick="accountSheet()">'+esc(LANG==='en'?Session.user.name_en:Session.user.name_ar)+'</button>'+
    '</div><h1>'+(isSec?t(n.t):t(n.h))+'</h1><div class="sub">'+(isSec?t(n.d):t(n.s))+'</div>'+
@@ -1035,11 +1062,22 @@ function alertsView(){
     var d=daysOnMarket(m);
     if(d>=21&&!viewingsOf(m.id).length)items.push({k:'a',t:mandateTitle(m),
       s:L('مضى '+d+' يومًا بلا معاينة','On market '+d+' days with no viewing'),a:L('راجع السعر أو الصور','Review price or photos')});
-    if(!(m.channels||[]).length)items.push({k:'w',t:mandateTitle(m),
-      s:adOK(m)?L('لم يُنشر في أي قناة','Not published anywhere')
-        :L('لا يمكن نشره — بلا ترخيص إعلاني','Cannot be published — no advertising licence'),
-      a:adOK(m)?L('انشره الآن','Publish now'):L('سجّل الترخيص','Record the licence'),
-      go:'publish:'+m.id});
+    if(m.source!=='partner'&&!authOK(m))
+      items.unshift({k:'a',t:mandateTitle(m),
+        s:authOf(m)?L('انتهى تفويض المالك','The owner authorization expired')
+                   :L('بلا تفويض من المالك','No owner authorization'),
+        a:L('اطلبه الآن','Get it now'),go:'auth:'+m.id});
+    /* السبب يُقال كما هو: من يُخبَر بسبب خاطئ يصلح الشيء الخطأ */
+    if(!(m.channels||[]).length){
+      var why = adOK(m) ? null
+        : (m.source!=='partner'&&!authOK(m)) ? 'auth'
+        : 'lic';
+      if(why!=='auth')items.push({k:'w',t:mandateTitle(m),
+        s:why===null?L('لم يُنشر في أي قناة','Not published anywhere')
+          :L('لا يمكن نشره — بلا ترخيص إعلاني','Cannot be published — no advertising licence'),
+        a:why===null?L('انشره الآن','Publish now'):L('سجّل الترخيص','Record the licence'),
+        go:'publish:'+m.id});
+    }
     var _l=adLic(m);
     if((m.channels||[]).length&&_l&&_l.exp&&daysBetween(_l.exp,new Date())<0)
       items.unshift({k:'a',t:mandateTitle(m),s:L('منشور برخصة إعلان منتهية','Live on an expired ad licence'),
@@ -1057,6 +1095,16 @@ function alertsView(){
     else if(hh<=24&&!v.reminded_at)items.push({k:'w',t:contactOf(v.contact_id).name_ar,
       s:L('معاينة اليوم — لم يُرسل تذكير','Viewing today — no reminder sent'),
       a:L('ذكّره','Remind'),go:'vremind:'+v.id});
+  });
+  /* عميل فُتحت له صفقة بلا اتفاق تمثيل: العمولة بلا سند */
+  Repo.where('requirements',function(r){return r.status==='active'&&!repOK(r);}).forEach(function(r){
+    var live=Repo.where('deals',function(d){return d.contact_id===r.contact_id&&!isClosed(d);}).length;
+    if(!live)return;
+    items.unshift({k:'a',t:contactOf(r.contact_id).name_ar,
+      s:repOf(r)?L('انتهى اتفاق التمثيل وصفقته جارية','Representation expired mid-deal')
+                :L('صفقة جارية بلا اتفاق تمثيل — العمولة بلا سند',
+                   'A live deal with no representation agreement'),
+      a:L('وثّقه الآن','Document it now'),go:'rep:'+r.id});
   });
   Repo.where('requirements',function(r){return r.status==='active'&&slaState(r)==='breached';}).forEach(function(r){
     items.push({k:'a',t:contactOf(r.contact_id).name_ar,
@@ -1122,9 +1170,13 @@ function jump(x){
   var p=x.split(':');
   if(p[0]==='setup'){closeSheet();return setupSheet();}
   if(p[0]==='settings')return go('settings',+p[1]||0);
+  if(p[0]==='props')return go('props',+p[1]||0);
+  if(p[0]==='clients')return go('clients',+p[1]||0);
   if(p[0]==='team')return go('team',0);
   if(p[0]==='publish')return publishSheet(p[1]);
   if(p[0]==='market')return marketAct(p[1]);
+  if(p[0]==='auth')return authSheet(p[1]);
+  if(p[0]==='rep')return repSheet(p[1]);
   if(p[0]==='vconfirm')return viewMsgSheet(p[1],'confirm');
   if(p[0]==='vremind')return viewMsgSheet(p[1],'remind');
   if(p[0]==='owner')return ownerReport(p[1]);
@@ -1164,6 +1216,17 @@ VIEWS.props=function(){
     if(isMarketer()&&m.by!==Session.user.id&&m.status!=='معتمد')return false;
     return !f||m.source===f;});
   var h='';
+  if(SUB===0&&can('mandate.create')){
+    var wl=webListings().length,fa=Repo.find('offices',Session.office.id).feed_at;
+    h+='<button class="r top" onclick="feedSheet()" style="width:100%;text-align:start;margin-bottom:11px">'+
+    '<div class="ic '+(wl?'g':'w')+'">🌐</div><div class="rm">'+
+    '<div class="rt">'+L('الموقع العام','Public website')+' <span class="num">'+wl+'</span></div>'+
+    '<div class="rs wrap">'+(wl
+      ? L('عقارًا جاهزًا للنشر'+(fa?' · آخر نشر قبل '+daysBetween(new Date(),fa)+' يومًا':' · لم يُنشر بعد'),
+          'listings ready to publish')
+      : L('لا عقار منشور على الموقع بعد','Nothing published to the website yet'))+
+    '</div></div><div class="rv">›</div></button>';
+  }
   var pend=Repo.where('mandates',function(m){return m.status!=='معتمد';}).length;
   if(can('mandate.create')&&pend&&SUB===0)h+='<div class="note"><b>'+pend+'</b> '+
     L('عرض ينتظر اعتمادك','listings await your approval')+'</div>';
@@ -1189,6 +1252,17 @@ VIEWS.props=function(){
     '<div class="p-m"><span><b class="num">'+a.beds+'</b> '+t('rooms')+'</span>'+
     '<span><b class="num">'+a.baths+'</b> '+t('baths')+'</span><span><b class="num">'+a.area+'</b> '+t('area')+'</span>'+
     ((m.channels||[]).length?'<span style="margin-inline-start:auto"><b class="num">'+m.channels.length+'</b> '+L('قناة','ch')+'</span>':'')+'</div>'+
+    (function(){var au=authOf(m);
+      if(!au)return m.source==='partner'||isMarket(m)?'':
+        '<div class="rs" style="margin-top:6px;color:var(--clay);font-weight:700">'+
+        L('بلا تفويض من المالك','No owner authorization')+'</div>';
+      return '<div class="rs" style="margin-top:6px">'+L('تفويض','Authorized')+
+      ' <span class="num">'+au.left+'</span> '+L('يومًا','days')+
+      ((m.auth&&m.auth.official)?' · '+L('عقد','contract')+' <span class="num">'+esc(m.auth.official)+'</span>'
+        :' <span class="tag t-w">'+L('بلا عقد رسمي','no official contract')+'</span>')+
+      (au.exclusive?' <span class="tag" style="background:rgba(201,162,39,.18);border:1px solid rgba(201,162,39,.5);color:var(--gold)">'+
+        L('حصري','Exclusive')+'</span>':'')+
+      (au.left<0?' <span class="tag t-a">'+L('منتهٍ','expired')+'</span>':'')+'</div>';})()+
     (function(){var l=adLic(m); if(!l)return '';
       return '<div class="rs" style="margin-top:6px">'+L('ترخيص إعلاني','Ad licence')+
       ' <span class="num">'+esc(l.no)+'</span>'+(l.own?'':' <span class="tag t-n">'+L('للمكتب','office')+'</span>')+
@@ -1210,7 +1284,11 @@ VIEWS.props=function(){
          '<button class="btn s o" onclick="expenseSheet(\''+a.id+'\')">'+L('مصروف','Expense')+'</button>'+
          '<button class="btn s g" onclick="ownerStatement(\''+a.id+'\')">'+L('كشف المالك','Statement')+'</button>'
         :(mState(m)==='متاح'
-          ?'<button class="btn s o" onclick="viewingSheet(\''+m.id+'\')">'+t('viewing')+'</button>'+
+          ?(!authOK(m)&&m.source!=='partner'
+             ?'<button class="btn s" onclick="authSheet(\''+m.id+'\')">'+L('التفويض','Authorization')+'</button>'
+             :'')+
+           '<button class="btn s" onclick="cardSheet(\''+m.id+'\')">'+L('بطاقة','Card')+'</button>'+
+          '<button class="btn s o" onclick="viewingSheet(\''+m.id+'\')">'+t('viewing')+'</button>'+
            '<button class="btn s g" onclick="publishSheet(\''+m.id+'\')">'+L('نشر','Publish')+'</button>'+
            '<button class="btn s g" onclick="cardSheet(\''+m.id+'\')">'+L('بطاقة','Card')+'</button>'+
            (m.source==='own'?'<button class="btn s g" onclick="ownerReport(\''+m.id+'\')">'+t('owner_report')+'</button>':'')
@@ -1436,12 +1514,18 @@ VIEWS.reports=function(){
 };
 
 VIEWS.money=function(){
+  var _x=can('commission.view')||can('commission.*')
+    ?'<button class="r top" onclick="exportSheet()" style="width:100%;text-align:start;margin-bottom:11px">'+
+     '<div class="ic g">↧</div><div class="rm"><div class="rt">'+L('تصدير محاسبي','Accounting export')+'</div>'+
+     '<div class="rs wrap">'+L('العمولات والدفعات ومستحقات الملّاك — ملف يُفتح في إكسل',
+       'Commissions, instalments and owner dues as Excel files')+'</div></div>'+
+     '<div class="rv">›</div></button>':'';
   if(!can('commission.view')&&!can('payment.view')&&!can('payment.*')&&!can('commission.view.own'))
     return '<div class="empty"><b>'+t('no_perm')+'</b></div>';
-  if(SUB===1)return contractsView();
-  if(SUB===2)return collectionsView();
-  if(SUB===3)return ownerDuesView();
-  return commissionsView();
+  if(SUB===1)return _x+contractsView();
+  if(SUB===2)return _x+collectionsView();
+  if(SUB===3)return _x+ownerDuesView();
+  return _x+commissionsView();
 };
 
 /* العمولات — القيد الواحد صار مجموعة قيود: إجمالي ثم خصم لكل شريك */
@@ -1509,6 +1593,7 @@ function contractsView(){
       '<div class="rs num" style="width:34px">'+p.no+'/'+ps.length+'</div>'+
       '<div class="rm"><div class="rs num">'+esc(p.due)+'</div><div class="rs">'+esc(p.kind||'')+'</div></div>'+
       '<div class="rn num">'+M(p.amount)+'</div>'+
+      (docsOf('payment',p.id).length?'<span class="tag t-g">'+L('إيصال','Receipt')+'</span>':'')+
       ((p.paid||0)>0&&(p.paid||0)<p.amount?'<span class="tag t-w">'+L('جزئي','Partial')+'</span>':
         '<span class="tag t-'+(st==='مدفوع'?'g':st==='متأخر'?'a':'w')+'">'+
         (st==='مدفوع'?t('paid'):st==='متأخر'?t('late'):t('due'))+'</span>')+
@@ -1833,6 +1918,15 @@ VIEWS.settings=function(){
       :L('سارية ','Valid for ')+lf+L(' يومًا',' days'))+' · '+esc(dstr(o.fal_expiry))+'</div></div>';})():'')+
   '<div class="two"><div class="f"><label>'+L('رخصة فال','FAL licence')+'</label><input id="ofal" value="'+esc(o.fal||'')+'" placeholder="—"></div>'+
   '<div class="f"><label>'+L('السجل التجاري','CR')+'</label><input id="ocr" value="'+esc(o.cr||'')+'" placeholder="—"></div></div>'+
+  '<div class="sec">'+L('حساب المكتب البنكي','Office bank account')+'</div>'+
+  '<div class="note">'+L('المكتب يوثّق ولا يقبض نقدًا. التحويل يصل للحساب مباشرة، ويُرفق إيصاله بالدفعة.',
+    'The office records; it does not hold cash. Transfers go straight to the account and the receipt is attached to the instalment.')+'</div>'+
+  '<div class="two"><div class="f"><label>'+L('البنك','Bank')+'</label>'+
+  '<input id="obank" value="'+esc(o.bank_name||'')+'" placeholder="—"></div>'+
+  '<div class="f"><label>'+L('اسم الحساب','Account name')+'</label>'+
+  '<input id="oacc" value="'+esc(o.bank_account||'')+'" placeholder="'+esc(o.name_ar||'')+'"></div></div>'+
+  '<div class="f"><label>'+L('الآيبان','IBAN')+'</label>'+
+  '<input id="oiban" value="'+esc(o.iban||'')+'" placeholder="SA00 0000 0000 0000 0000 0000"></div>'+
   '<div class="f"><label>'+L('انتهاء رخصة فال','FAL expiry')+'</label>'+
   '<input id="ofex" type="date" value="'+esc(o.fal_expiry||'')+'"></div>'+
   '<div class="two"><div class="f"><label>'+L('الترخيص الإعلاني','Advertising licence')+'</label>'+
@@ -2139,7 +2233,10 @@ function paySheet(id){
   '<div class="f"><label>'+L('الطريقة','Method')+'</label><div class="pick">'+
   [['تحويل','Transfer'],['شبكة','Card'],['نقدًا','Cash'],['شيك','Cheque']].map(function(x,i){
     return '<button class="pk '+(i===0?'on':'')+'" onclick="pyM=\''+x[0]+'\';var b=this.parentNode.children;for(var j=0;j<b.length;j++)b[j].className=\'pk\';this.className=\'pk on\'">'+bi(x)+'</button>';}).join('')+'</div></div>'+
-  '<button class="btn" onclick="savePay(\''+id+'\')">'+t('save')+'</button>');
+  '<button class="btn" onclick="savePay(\''+id+'\')">'+t('save')+'</button>'+
+  '<button class="btn g" onclick="docSheet(\'payment\',\''+id+'\')">'+
+    L('إرفاق الإيصال','Attach the receipt')+
+    (docsOf('payment',id).length?' ('+docsOf('payment',id).length+')':'')+'</button>');
 }
 var pyM='تحويل';
 function savePay(id){
@@ -2284,7 +2381,8 @@ function paySettlement(assetId,amt){
 /* ── المستندات والصور ────────────────────────────────────────── */
 function docsOf(e,id){return Repo.where('documents',function(d){return d.entity===e&&d.entity_id===id;});}
 function docLabel(e){return {asset:L('العقار','Property'),contract:L('العقد','Contract'),
-  deal:L('الصفقة','Deal'),contact:L('العميل','Contact'),service:L('الصيانة','Service')}[e]||e;}
+  deal:L('الصفقة','Deal'),contact:L('العميل','Contact'),service:L('الصيانة','Service'),
+  payment:L('إيصال السداد','Payment receipt')}[e]||e;}
 var dDraft={kind:'صورة'};
 function docSheet(e,id){
   var list=docsOf(e,id);
@@ -2380,6 +2478,18 @@ function runChecks(){
     else if(left<=60)pushNotif('fal60:'+o.fal_expiry+':'+wk,
       'رخصة فال تنتهي بعد '+left+' يومًا — ابدأ التجديد','FAL expires in '+left+' days','alert');
   })();
+  /* التفويض: ينتهي كما تنتهي الرخصة، والتسويق بعده بلا سند */
+  Repo.where('mandates',function(m){
+    return m.status==='معتمد'&&mState(m)==='متاح'&&!isMarket(m)&&m.source!=='partner';
+  }).forEach(function(m){
+    var au=authOf(m);
+    if(!au)pushNotif('nau:'+m.id,'بلا تفويض — '+mandateTitle(m)+' لا يُسوَّق حتى يأذن مالكه',
+      'No authorization on file','alert');
+    else if(au.left<0)pushNotif('aux:'+m.id+':'+au.end,
+      'انتهى تفويض '+mandateTitle(m)+' — جدّده أو اسحب العرض','Authorization expired','alert');
+    else if(au.left<=14)pushNotif('au14:'+m.id+':'+wk,
+      'تفويض '+mandateTitle(m)+' ينتهي بعد '+au.left+' يومًا','Authorization expiring','alert');
+  });
   /* رخص الإعلان لكل عقار منشور */
   Repo.where('mandates',function(m){
     var l=adLic(m);return (m.channels||[]).length&&l&&l.exp;}).forEach(function(m){
@@ -2440,10 +2550,280 @@ var SHORT_FALLBACK='بناء الشرق';
 function shortName(){
   var o=(Session.office&&Repo.find('offices',Session.office.id))||Repo.all('offices')[0];
   var n=(o&&(LANG==='en'?(o.name_en||o.name_ar):o.name_ar))||SHORT_FALLBACK;
-  n=String(n).replace(/^مؤسسة\s+/,'').replace(/\s+للخدمات العقارية$/,'')
-             .replace(/\s+Real Estate$/i,'');
-  return n.length>18?n.slice(0,18)+'…':n;
+  n=String(n).replace(/^مؤسسة\s+/,'').replace(/^شركة\s+/,'').replace(/^مكتب\s+/,'')
+             .replace(/\s+للخدمات العقارية$/,'').replace(/\s+العقارية$/,'')
+             .replace(/\s+Real Estate$/i,'').trim();
+  if(n.length<=14)return n;
+  /* القطع عند الكلمة لا عند الحرف — «بناء الشرق» أوقع من «بناء الشرق الم…» */
+  var w=n.split(/\s+/),out=w[0];
+  for(var i=1;i<w.length;i++){
+    if((out+' '+w[i]).length>14)break;
+    out+=' '+w[i];
+  }
+  return out;
 }
+/* التطبيع: الوسيط يكتب «احمد» ويبحث عن «أحمد»، ويكتب الرقم بلا صفر.
+   بحثٌ لا يجد ما هو موجود أسوأ من غياب البحث، لأنه يُكذّب الذاكرة. */
+function norm(x){
+  return String(x||'').toLowerCase()
+    .replace(/[\u0623\u0625\u0622\u0671]/g,'\u0627')   /* أ إ آ ← ا */
+    .replace(/\u0649/g,'\u064a')                        /* ى ← ي */
+    .replace(/\u0629/g,'\u0647')                        /* ة ← ه */
+    .replace(/[\u064b-\u0652\u0640]/g,'')               /* تشكيل وتطويل */
+    .replace(/[^\w\u0600-\u06ff]+/g,' ')
+    .trim();
+}
+function digits(x){return String(x||'').replace(/\D/g,'');}
+
+/* كل نتيجة تحمل: ماذا وجدنا، ولماذا طابق، وأين يذهب الوسيط */
+function searchAll(q){
+  var s0=norm(q),d0=digits(q),out=[];
+  if(s0.length<2&&d0.length<3)return out;
+  function hit(hay){ return s0 && norm(hay).indexOf(s0)>-1; }
+  function num(hay){ return d0.length>=3 && digits(hay).indexOf(d0)>-1; }
+
+  Repo.all('contacts').forEach(function(c){
+    var why = hit(c.name_ar)?'الاسم' : (num(c.phone)?'الجوال':null);
+    if(!why)return;
+    out.push({k:'contact',t:c.name_ar,s:(c.role||'')+' · '+(c.phone||''),
+      why:why,go:function(){closeSheet();contactSheet(c.id);}});
+  });
+
+  Repo.all('mandates').forEach(function(m){
+    var a=asset(m); if(!a)return;
+    var why = hit(a.hood)?'الحي' : hit(a.type)?'النوع' : (a.desc&&hit(a.desc))?'وصف الوحدة'
+            : (a.city&&hit(a.city))?'المدينة'
+            : num(m.price)?'السعر'
+            : (m.ad_licence&&num(m.ad_licence))?'الترخيص الإعلاني'
+            : (m.auth&&m.auth.official&&num(m.auth.official))?'عقد الوساطة'
+            : null;
+    if(!why)return;
+    out.push({k:'mandate',t:mandateTitle(m),s:M(m.price)+' · '+mState(m),
+      why:why,go:function(){closeSheet();go('props',0);}});
+  });
+
+  Repo.all('contracts').forEach(function(ct){
+    var why = num(ct.no)||hit(ct.no)?'رقم العقد'
+            : num(ct.total)?'قيمة العقد' : null;
+    if(!why)return;
+    out.push({k:'contract',t:ct.no,s:contactOf(ct.contact_id).name_ar+' · '+M(ct.total),
+      why:why,go:function(){closeSheet();go('money',1);}});
+  });
+
+  Repo.all('deals').forEach(function(d){
+    var c=contactOf(d.contact_id);
+    if(!hit(c.name_ar)&&!num(d.value))return;
+    out.push({k:'deal',t:c.name_ar,s:(d.stage||'')+' · '+M(d.value),
+      why:hit(c.name_ar)?'اسم العميل':'قيمة الصفقة',
+      go:function(){closeSheet();go('deals');dealSheet(d.id);}});
+  });
+
+  Repo.all('requirements').forEach(function(r){
+    var c=contactOf(r.contact_id);
+    var why = hit(c.name_ar)?'اسم العميل'
+            : (r.hoods||[]).some(hit)?'الحي'
+            : (r.types||[]).some(hit)?'النوع' : null;
+    if(!why)return;
+    out.push({k:'req',t:c.name_ar,s:r.purpose+' · '+M(r.min)+'–'+M(r.max),
+      why:why,go:function(){closeSheet();clientReport(r.id);}});
+  });
+
+  return out.slice(0,40);
+}
+var SQ='';
+var SR=[];
+function searchSheet(){
+  var rows=searchAll(SQ);
+  SR=rows;
+  var KIND={contact:['العميل','Contact','👤'],mandate:['العقار','Listing','⌂'],
+    contract:['العقد','Contract','📄'],deal:['الصفقة','Deal','◆'],req:['الطلب','Request','☰']};
+  sheet('<h3>'+L('بحث','Search')+'</h3>'+
+  '<div class="f"><input id="sq" value="'+esc(SQ)+'" placeholder="'+
+  L('اسم · جوال · حي · رقم عقد','name · phone · district · contract no')+
+  '" oninput="SQ=this.value;searchLive()"></div>'+
+  '<div id="sres">'+searchRows(rows,KIND)+'</div>'+
+  '<div class="note">'+L('يبحث في العملاء والعروض والطلبات والصفقات والعقود معًا. ويتجاوز الهمزات والتاء المربوطة، فـ«احمد» تجد «أحمد».',
+    'Searches everyone at once, and ignores Arabic spelling variants.')+'</div>');
+  var el=document.getElementById('sq'); if(el)el.focus();
+}
+function searchRows(rows,KIND){
+  if(!SQ||SQ.length<2)return '<div class="empty">'+L('اكتب حرفين على الأقل','Type at least two characters')+'</div>';
+  if(!rows.length)return '<div class="empty"><b>'+L('لا نتيجة','Nothing found')+'</b>'+
+    L('جرّب جزءًا من الاسم أو آخر أربعة أرقام من الجوال',
+      'Try part of the name or the last four digits of the phone')+'</div>';
+  return '<div class="sec">'+rows.length+' '+L('نتيجة','results')+'</div>'+
+  rows.map(function(x,i){
+    var k=KIND[x.k]||['','',''];
+    return '<button class="r top" onclick="SR['+i+'].go()"><div class="ic g">'+k[2]+'</div>'+
+    '<div class="rm"><div class="rt">'+esc(x.t)+'</div>'+
+    '<div class="rs wrap">'+esc(x.s)+'</div>'+
+    '<div class="rs"><span class="tag t-n">'+bi(k)+'</span> '+
+    L('طابق في: ','matched on: ')+esc(x.why)+'</div></div>'+
+    '<div class="rv">\u203a</div></button>';}).join('');
+}
+function searchLive(){
+  var box=document.getElementById('sres'); if(!box)return;
+  var rows=searchAll(SQ); SR=rows;
+  var KIND={contact:['العميل','Contact','👤'],mandate:['العقار','Listing','⌂'],
+    contract:['العقد','Contract','📄'],deal:['الصفقة','Deal','◆'],req:['الطلب','Request','☰']};
+  box.innerHTML=searchRows(rows,KIND);
+}
+
+/* البطاقة تُبنى من بيانات العقار وحدها. بيانات المالك لا تدخلها
+   أبدًا — لا اسمه ولا رقمه ولا حتى إشارة إليه. */
+function cardText(mid,rid){
+  var m=Repo.find('mandates',mid),a=asset(m),o=Session.office;
+  var r=rid?Repo.find('requirements',rid):null;
+  var C=[];
+  C.push(unitName(a)+' لل'+(m.purpose==='بيع'?'بيع':'إيجار')+' — '+a.hood+(a.city?'، '+a.city:''));
+  C.push('المرجع: '+refOf(m));
+  C.push('');
+  if(a.area)C.push('· المساحة: '+M(a.area)+' م²');
+  if(a.beds)C.push('· غرف النوم: '+a.beds);
+  if(a.baths)C.push('· دورات المياه: '+a.baths);
+  C.push('· السعر: '+M(m.price)+' ريال'+(m.purpose==='إيجار'?' سنويًا':''));
+  if(m.purpose==='إيجار'&&r&&r.pay_pref)
+    C.push('· السداد: نطلب لكم '+r.pay_pref+' كما فضّلتم');
+
+  /* المسار والتنازل يُقالان هنا كما يُقالان في التقرير */
+  var rt=routeOf(m);
+  C.push('');
+  C.push('['+routeLabel(rt)+' — '+routeNote(rt)+']');
+  if(r){
+    var f=[];
+    if(m.price>r.max)f.push('يزيد '+M(m.price-r.max)+' عن سقفكم');
+    if((r.hoods||[]).length&&r.hoods.indexOf(a.hood)<0)f.push('خارج أحيائكم المطلوبة');
+    if(r.beds&&!a.beds)f.push('عدد غرفه لم يُسجَّل بعد — نؤكده قبل المعاينة');
+    else if(r.beds&&a.beds<r.beds)f.push('غرفه أقل بواحدة');
+    if(f.length)C.push('(نعرضه رغم أنه '+f.join('، و')+')');
+  }
+
+  C.push('');
+  C.push('للمعاينة أخبرونا بيومين يناسبانكم، ونرتّبها ونؤكدها لكم برسالة.');
+  if(adOK(m)&&(adLic(m)||{}).no)C.push('');
+  if(adOK(m)&&(adLic(m)||{}).no)C.push('رقم الترخيص الإعلاني: '+adLic(m).no);
+  C.push('');
+  C.push(o.name_ar+(o.fal?'\nرخصة فال: '+o.fal:''));
+  return C.join('\n');
+}
+function cardSheet(mid,rid){
+  var m=Repo.find('mandates',mid),a=asset(m);
+  var tx=cardText(mid,rid);
+  var c=rid?contactOf(Repo.find('requirements',rid).contact_id):null;
+  var gaps=[];
+  if(!a.area)gaps.push(L('المساحة','area'));
+  if(!a.beds)gaps.push(L('عدد الغرف','bedrooms'));
+  if(!a.baths)gaps.push(L('دورات المياه','bathrooms'));
+  sheet('<h3>'+L('بطاقة العقار','Property card')+'</h3>'+
+  '<div class="sub">'+mandateTitle(m)+(c?' · '+esc(c.name_ar):'')+'</div>'+
+  (gaps.length?'<div class="note" style="border-color:var(--clay)"><b>'+
+    L('ناقص: ','Missing: ')+gaps.join('، ')+'</b> — '+
+    L('كل بيان ناقص سؤال يرجع إليكم ويؤخّر المعاينة يومًا.',
+      'Every missing field is a question that comes back and costs a day.')+
+    '<div style="margin-top:8px"><button class="btn s o" onclick="closeSheet();go(\'props\',0)">'+
+    L('أكمل بيانات العقار','Complete the property')+'</button></div></div>':'')+
+  '<div class="bubble">'+esc(tx)+'</div>'+
+  '<div class="note">'+L('لا يخرج من هذه البطاقة اسم مالك ولا رقمه ولا إشارة إليه — ولو سأل العميل.',
+    'No owner name, number, or hint ever leaves in this card.')+'</div>'+
+  (c?'<button class="btn" onclick="send(\''+(c.phone||'')+'\','+JSON.stringify(tx)+')">'+
+     L('أرسلها لـ ','Send to ')+esc(c.name_ar)+'</button>':'')+
+  '<button class="btn g" onclick="copyReport('+JSON.stringify(tx)+')">'+L('انسخ البطاقة','Copy the card')+'</button>');
+}
+
+/* CSV بالعربية يفتحه إكسل مقلوبًا ما لم يبدأ بعلامة الترتيب.
+   ملف يفتح مشوَّهًا لا يُستخدم مرتين. */
+function csvCell(v){
+  var x=String(v===undefined||v===null?'':v);
+  return /[",\n;]/.test(x) ? '"'+x.replace(/"/g,'""')+'"' : x;
+}
+function csvOf(head,rows){
+  var out=[head.map(csvCell).join(',')];
+  rows.forEach(function(r){out.push(r.map(csvCell).join(','));});
+  return '\ufeff'+out.join('\r\n');          /* BOM ليقرأها إكسل عربيةً */
+}
+function monthKey(iso){return String(iso||'').slice(0,7);}
+function inMonth(iso,mk){return !mk||monthKey(iso)===mk;}
+
+/* ثلاثة ملفات لثلاثة أسئلة: ماذا كسبنا، وماذا حُصّل، وماذا للمالك */
+function expCommissions(mk){
+  var rows=Repo.all('commissions').filter(function(x){return inMonth(x.created_at,mk);})
+   .map(function(x){
+    var d=x.deal_id?Repo.find('deals',x.deal_id):null;
+    return [dstr(x.created_at), x.kind, x.who,
+      d?contactOf(d.contact_id).name_ar:'', d?d.purpose:'',
+      x.basis||'', x.rate||'', x.amount, x.reason||''];
+  });
+  return csvOf(['التاريخ','النوع','الجهة','العميل','الغرض','الأساس','النسبة%','المبلغ','البيان'],rows);
+}
+function expPayments(mk){
+  var rows=[];
+  Repo.all('payments').forEach(function(p){
+    if(!inMonth(p.due,mk)&&!inMonth(p.paid_at,mk))return;
+    var ct=Repo.find('contracts',p.contract_id); if(!ct)return;
+    var a=Repo.find('assets',ct.asset_id)||{};
+    rows.push([ct.no, contactOf(ct.contact_id).name_ar,
+      (a.type||'')+' '+(a.hood||''), p.no, p.kind||'',
+      p.due, p.amount, p.paid||0, payRemain(p), payState(p),
+      p.paid_at?dstr(p.paid_at):'',
+      docsOf('payment',p.id).length?'نعم':'لا']);
+  });
+  return csvOf(['رقم العقد','المستأجر','العقار','الدفعة','النوع','الاستحقاق',
+    'المبلغ','المدفوع','المتبقي','الحالة','تاريخ السداد','إيصال'],rows);
+}
+function expOwnerDues(mk){
+  var rows=[];
+  Repo.all('assets').forEach(function(a){
+    if(!a.owner_id)return;
+    var bk=ownerBook(a.id); if(!bk||!bk.mandate)return;
+    rows.push([contactOf(a.owner_id).name_ar,(a.type||'')+' '+(a.hood||''),
+      bk.collected,bk.expenses,bk.mgmt,bk.earned,bk.paid,bk.earned-bk.paid]);
+  });
+  return csvOf(['المالك','العقار','المحصَّل','المصروفات','أتعاب الإدارة',
+    'المستحق','المصروف له','الرصيد'],rows);
+}
+
+function downloadCSV(name,txt){
+  try{
+    var b=new Blob([txt],{type:'text/csv;charset=utf-8'});
+    var u=URL.createObjectURL(b);
+    var a=document.createElement('a'); a.href=u; a.download=name;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function(){URL.revokeObjectURL(u);},2000);
+    logAct('office',Session.office.id,'export','صُدِّر '+name,'Exported '+name);
+    toast(L('نُزّل الملف','Downloaded'));
+  }catch(e){toast(L('تعذّر التنزيل','Download failed'));}
+}
+var expM='';
+function exportSheet(){
+  var months={},now=monthKey(nowISO());
+  Repo.all('commissions').forEach(function(x){months[monthKey(x.created_at)]=1;});
+  Repo.all('payments').forEach(function(p){if(p.due)months[monthKey(p.due)]=1;});
+  var list=Object.keys(months).filter(Boolean).sort().reverse().slice(0,12);
+  if(!expM)expM=list.indexOf(now)>-1?now:(list[0]||now);
+  var nc=Repo.all('commissions').filter(function(x){return inMonth(x.created_at,expM);}).length;
+  var np=Repo.all('payments').filter(function(p){
+    return inMonth(p.due,expM)||inMonth(p.paid_at,expM);}).length;
+  sheet('<h3>'+L('تصدير محاسبي','Accounting export')+'</h3>'+
+  '<div class="sub">'+L('ملفات تُفتح في إكسل','Files that open in Excel')+'</div>'+
+  '<div class="f"><label>'+L('الشهر','Month')+'</label><div class="pick">'+
+  ['<button class="pk '+(expM===''?'on':'')+'" onclick="expM=\'\';exportSheet()">'+L('الكل','All')+'</button>']
+  .concat(list.map(function(k){
+    return '<button class="pk '+(expM===k?'on':'')+'" onclick="expM=\''+k+'\';exportSheet()">'+k+'</button>';}))
+  .join('')+'</div></div>'+
+  '<div class="grid2"><div class="m"><div class="t">'+L('قيود العمولة','Commission entries')+'</div>'+
+  '<div class="v num">'+nc+'</div></div>'+
+  '<div class="m"><div class="t">'+L('الدفعات','Instalments')+'</div>'+
+  '<div class="v num">'+np+'</div></div></div>'+
+  '<button class="btn" onclick="downloadCSV(\'commissions-'+(expM||'all')+'.csv\',expCommissions(\''+expM+'\'))">'+
+    L('عمولات المكتب','Office commissions')+'</button>'+
+  '<button class="btn o" onclick="downloadCSV(\'payments-'+(expM||'all')+'.csv\',expPayments(\''+expM+'\'))">'+
+    L('الدفعات والتحصيل','Instalments and collections')+'</button>'+
+  '<button class="btn g" onclick="downloadCSV(\'owner-dues-'+(expM||'all')+'.csv\',expOwnerDues(\''+expM+'\'))">'+
+    L('مستحقات الملّاك','Owner dues')+'</button>'+
+  '<div class="note">'+L('الأرقام كما هي في النظام، والخصومات بالسالب. والملف للمحاسبة لا للعميل — فيه أسماء ومبالغ لا تُشارَك.',
+    'Figures as recorded; deductions are negative. For accounting only — it contains names and amounts.')+'</div>');
+}
+
 function stg(){return Repo.all('settings')[0]||{};}
 
 /* «تقرير أسبوعي حتى لو لم يحدث شيء» هو الوعد المعلن على الصفحة.
@@ -2543,6 +2923,19 @@ function readiness(){
                  .every(function(u){return !!u.pw;}),
      ar:'حسابات حقيقية بكلمات مرور', en:'Real accounts with passwords',
      why:'الحسابات التجريبية كلمتها معروفة للجميع', go:'setup'},
+    {k:'auth', ok:!Repo.where('mandates',function(m){
+       return m.status==='معتمد'&&mState(m)==='متاح'&&!isMarket(m)&&m.source!=='partner'&&!authOK(m);}).length,
+     ar:'تفويض المالك لكل عرض', en:'Owner authorization on every listing',
+     why:'أساس العمولة — وبلا ورقة تثبته، النزاع عليها بلا دليل', go:'props:0',
+     soft:!Repo.where('mandates',function(m){return m.status==='معتمد';}).length},
+    {k:'rep', ok:!Repo.where('requirements',function(r){
+       if(r.status!=='active'||repOK(r))return false;
+       return Repo.where('deals',function(d){return d.contact_id===r.contact_id&&!isClosed(d);}).length>0;}).length,
+     ar:'اتفاق تمثيل لكل صفقة جارية', en:'Representation on every live deal',
+     why:'العميل الذي يكتشف العمولة عند التوقيع ينسحب', go:'clients:0', soft:true},
+    {k:'iban', ok:!!o.iban, ar:'حساب المكتب البنكي', en:'Office bank account',
+     why:'المطالبة بلا آيبان تُجبر المستأجر على سؤال، والسؤال يؤخّر السداد', go:'settings:0',
+     soft:!Repo.where('contracts',function(c){return c.status==='نشط';}).length},
     {k:'bk',   ok:backup!==null&&backup<=7, ar:'نسخة احتياطية هذا الأسبوع', en:'A backup this week',
      why:'البيانات في هذا الجهاز وحده', go:'settings:2'}
   ];
@@ -2878,6 +3271,8 @@ function digits(x){ /* يقبل الأرقام العربية والفواصل *
 }
 function parseIntake(txt){
   var out={},lines=String(txt||'').split(/\r?\n/);
+  /* التوثيق إجراء نظامي لا بحث — يُفرز مبكرًا لئلا يدخل خط المطابقة */
+  if(/توثيق_عقد|طلب توثيق عقد/.test(String(txt||'')))out.doc=true;
   lines.forEach(function(ln){
     var i=ln.indexOf(':'); if(i<0)i=ln.indexOf('：'); if(i<0)return;
     var k=ln.slice(0,i).trim(), v=ln.slice(i+1).trim();
@@ -2885,7 +3280,9 @@ function parseIntake(txt){
     if(/الاسم/.test(k))out.name=v;
     else if(/الصفة/.test(k))out.role=/مالك/.test(v)?'مالك':'باحث';
     else if(/الغرض/.test(k))out.purpose=v;
+    else if(/نوع العقد/.test(k))out.ctype=v;
     else if(/نوع/.test(k))out.type=v;
+    else if(/وصف الوحدة/.test(k))out.desc=v;
     else if(/السداد|الشراء/.test(k))out.pay=v;
     else if(/المدينة/.test(k))out.city=v;
     else if(/الحي/.test(k))out.hood=v;
@@ -2908,7 +3305,7 @@ function parseIntake(txt){
     if(hit)out.type=hit[0];
   }
   if(!out.city&&out.hood)out.city=cityOfHood(out.hood);
-  out.ok = !!(out.role&&out.type);
+  out.ok = out.doc ? !!out.ctype : !!(out.role&&out.type);
   return out;
 }
 function pasteSheet(){
@@ -2928,7 +3325,9 @@ function readIntake(){
   pDraft=p; intakeConfirm();
 }
 function intakeConfirm(){
-  var p=pDraft,owner=p.role==='مالك';
+  var p=pDraft;
+  if(p.doc)return docReqConfirm();
+  var owner=p.role==='مالك';
   var known=hoodList().some(function(h){return h[0]===p.hood;});
   var row=function(a,b){return '<div class="r"><div class="rm"><div class="rs">'+a+'</div>'+
     '<div class="rt">'+esc(b||'—')+'</div></div></div>';};
@@ -2938,6 +3337,7 @@ function intakeConfirm(){
   row(L('الاسم','Name'),p.name)+
   row(t('type'),p.type)+
   row(L('المدينة','City'),p.city)+
+  (p.desc?row(L('وصف الوحدة','Unit'),p.desc):'')+
   (p.pay?row(L('السداد','Payment'),p.pay):'')+
   row(L('الحي','District'),p.hood)+
   (owner?row(L('السعر المتوقع','Expected price'),p.price?M(p.price)+' '+t('sar'):'')
@@ -2956,6 +3356,43 @@ function intakeConfirm(){
     ['غير مستعد','Not ready'],['وسيط يستكشف','Agent fishing']].map(function(r){
     return '<button class="pk a" onclick="dropIntake(\''+r[0]+'\')">'+bi(r)+'</button>';}).join('')+'</div></div>');
 }
+/* التوثيق: خدمة تُقدَّم لا عقار يُبحث عنه. تُسجَّل استفسارًا
+   على قناة الموقع، ومهمةً لبدء الإجراء، وعميلًا يُتابَع. */
+function docReqConfirm(){
+  var p=pDraft;
+  sheet('<h3>'+L('طلب توثيق عقد','Lease documentation request')+'</h3>'+
+  '<div class="sub">'+L('عبر منصة إيجار','Via the Ejar platform')+'</div>'+
+  '<div class="r"><div class="ic g">📄</div><div class="rm">'+
+  '<div class="rt">'+esc(p.name||L('بلا اسم','No name'))+'</div>'+
+  '<div class="rs">'+L('نوع العقد','Contract type')+': <b>'+esc(p.ctype||'—')+'</b></div></div></div>'+
+  '<div class="f" style="margin-top:12px"><label>'+t('phone')+' — '+
+  L('من واتساب','from WhatsApp')+'</label><input id="pph" inputmode="tel" value="'+esc(p.phone||'')+'"></div>'+
+  '<div class="note">'+L('التوثيق إجراء نظامي على منصة إيجار، وليس بحثًا عن عقار. لا يدخل المطابقة ولا يُنشئ عرضًا.',
+    'Documentation is a regulatory procedure on Ejar, not a property search. It never enters matching.')+'</div>'+
+  '<button class="btn" onclick="saveDocReq()">'+L('سجّله وابدأ الإجراء','Record it and start')+'</button>'+
+  '<div class="f" style="margin-top:14px"><label>'+L('أو صنّفه غير جاد','Or mark it not serious')+'</label>'+
+  '<div class="pick">'+[['استفسار فقط','Enquiry only'],['لا يملك المتطلبات','Missing documents'],
+    ['غيّر رأيه','Changed their mind']].map(function(r){
+    return '<button class="pk a" onclick="dropIntake(\''+r[0]+'\')">'+bi(r)+'</button>';}).join('')+'</div></div>');
+}
+function saveDocReq(){
+  var p=pDraft,phone=val('pph');
+  if(!phone){toast(L('أدخل رقم الجوال','Enter the phone number'));return;}
+  logIntake(p,phone,true);
+  var ex=Repo.all('contacts').filter(function(c){return c.phone===phone;})[0];
+  var c=ex||Repo.insert('contacts',{name_ar:p.name||L('طالب توثيق','Documentation client'),
+    phone:phone,role:'باحث',source:'الموقع',assigned_to:nextAssignee()});
+  if(ex&&!ex.source)Repo.update('contacts',ex.id,{source:'الموقع'});
+  logAct('contact',c.id,'doc_request','طلب توثيق عقد '+(p.ctype||'')+' — '+(p.name||''),
+    'Lease documentation request');
+  pushTask('doc:'+c.id+':'+Date.now(),'توثيق عقد '+(p.ctype||'')+' — '+c.name_ar,
+    todayStr(),c.assigned_to,'contact',c.id);
+  notify('طلب توثيق عقد '+(p.ctype||'')+' — '+c.name_ar,'Lease documentation request','alert');
+  Repo.flush();
+  pDraft=null;closeSheet();go('clients',0);
+  toast(L('سُجّل — ابدأ الإجراء على إيجار','Recorded — start the Ejar procedure'));
+}
+
 /* كل رسالة تُسجَّل استفسارًا على قناة الموقع، جادة كانت أو لا،
    وإلا صار تقرير القنوات يمدح الموقع بنسبة نجاح ١٠٠٪ كاذبة. */
 function logIntake(p,phone,serious,reason){
@@ -2984,7 +3421,7 @@ function saveIntake(){
   }
 
   if(owner){
-    var a=Repo.insert('assets',{type:p.type,city:p.city||null,hood:p.hood||'',
+    var a=Repo.insert('assets',{type:p.type,desc:p.desc||'',city:p.city||null,hood:p.hood||'',
       beds:p.beds||0,baths:0,area:0,owner_id:c.id,photo:null,photos:[]});
     var m=Repo.insert('mandates',{asset_id:a.id,purpose:p.sys,price:p.price||0,source:'sourced',
       status:isMarketer()?'بانتظار الاعتماد':'معتمد',state:'متاح',by:Session.user.id,channels:[],
@@ -3015,7 +3452,7 @@ function propSheet(){
   '<div class="f"><label>'+L('مصدر العرض','Source')+'</label><div class="pick">'+Object.keys(SOURCES).map(function(k){
     return '<button class="pk '+(draft.source===k?'on':'')+'" onclick="draft.source=\''+k+'\';propSheet()">'+bi(SOURCES[k])+'</button>';}).join('')+'</div></div>'+
   '<div class="f"><label>'+t('type')+'</label><div class="pick">'+TYPES.slice(0,7).map(function(x){
-    return '<button class="pk '+(draft.type===x[0]?'on':'')+'" onclick="draft.type=\''+x[0]+'\';propSheet()">'+bi(x)+'</button>';}).join('')+'</div></div>'+
+    return '<button class="pk '+(draft.type===x[0]?'on':'')+'" onclick="draft.type=\''+x[0]+'\';draft.desc=\'\';propSheet()">'+bi(x)+'</button>';}).join('')+'</div></div>'+
   '<div class="f"><label>'+L('المدينة','City')+'</label><div class="pick">'+CITIES.map(function(cy){
     return '<button class="pk '+(draft.city===cy?'on':'')+'" onclick="draft.city=\''+cy+'\';draft.hood=\'\';propSheet()">'+esc(cy)+'</button>';}).join('')+'</div></div>'+
   '<div class="f"><label>'+L('الغرض','Purpose')+'</label><div class="pick">'+PURPOSES.map(function(x){
@@ -3026,6 +3463,16 @@ function propSheet(){
    hoodsOf(draft.city).map(function(h){
      return '<option value="'+esc(h)+'" '+(draft.hood===h?'selected':'')+'>'+esc(h)+'</option>';}).join('')+
    '</select></div>'+
+  (unitOpts(draft.type).length
+   ?'<div class="f"><label>'+L('وصف الوحدة','Unit description')+'</label><div class="pick">'+
+    unitOpts(draft.type).map(function(x){
+      return '<button class="pk '+(draft.desc===x?'on':'')+
+      '" onclick="draft.desc=(draft.desc===\''+x+'\'?\'\':\''+x+'\');propSheet()">'+esc(x)+'</button>';}).join('')+
+    '</div></div>'+
+    '<div class="f"><label>'+L('أو اكتب وصفًا آخر','Or write another')+'</label>'+
+    '<input id="pdesc" value="'+esc(draft.desc||'')+'" placeholder="'+
+    L('مثل: شقة بمدخل خاص دور أرضي','e.g. ground floor with a private entrance')+'"></div>'
+   :'')+
   '<div class="two"><div class="f"><label>'+t('rooms')+'</label><input id="beds" type="number" inputmode="numeric"></div>'+
   '<div class="f"><label>'+t('baths')+'</label><input id="baths" type="number" inputmode="numeric"></div></div>'+
   '<div class="two"><div class="f"><label>'+t('area')+'</label><input id="area" type="number" inputmode="numeric"></div>'+
@@ -3053,7 +3500,8 @@ function saveProp(){
     var ex=Repo.all('contacts').filter(function(c){return c.phone===ph;})[0];
     ownerId=ex?ex.id:Repo.insert('contacts',{name_ar:val('own1'),phone:ph,role:'مالك',assigned_to:Session.user.id}).id;
   }
-  var a=Repo.insert('assets',{type:draft.type,city:draft.city,hood:draft.hood||val('hood'),
+  var a=Repo.insert('assets',{type:draft.type,desc:(val('pdesc')||draft.desc||'').trim(),
+    city:draft.city,hood:draft.hood||val('hood'),
     beds:+val('beds')||0,baths:+val('baths')||0,area:+val('area')||0,owner_id:ownerId,
     photo:draft.photo,photos:draft.photo?[draft.photo]:[]});
   var m=Repo.insert('mandates',{asset_id:a.id,purpose:draft.purpose,price:price,source:draft.source,
@@ -3062,7 +3510,7 @@ function saveProp(){
     partner:draft.source==='partner'?val('own1'):null,split:+val('split')||null});
   logAct('mandate',m.id,'created','أُضيف عرض: '+draft.type+' — '+draft.hood,'Listing added');
   if(isMarketer())notify('عرض جديد من مسوّق ينتظر الاعتماد','New marketer listing awaiting approval','alert');
-  draft={type:'شقة',purpose:'إيجار',city:'الجبيل البلد',hood:'',source:'own',photo:null};
+  draft={type:'شقة',desc:'',purpose:'إيجار',city:'الجبيل البلد',hood:'',source:'own',photo:null};
   closeSheet();go('props');
   toast(isMarketer()?L('أُرسل للمكتب لاعتماده','Sent for approval'):L('أُضيف ودخل المطابقة','Added and matching'));
 }
@@ -3321,8 +3769,303 @@ function shareCard(mid){
   },'image/jpeg',0.92);
 }
 
+/* رقم مرجعي قصير يُذكر في الإعلان وفي رسالة العميل، فيُعرف العقار بضغطة */
+function refOf(m){
+  return 'ع-'+String(m.id).replace(/\D/g,'').slice(-4).padStart(4,'0');
+}
+/* ما يجوز نشره: عرضٌ لنا، متاح، وبرخصة إعلانية سارية، واختاره المكتب للموقع.
+   العقار المرصود مستثنى دائمًا — لسنا وكلاءه. */
+function webListings(){
+  return Repo.where('mandates',function(m){
+    if(isMarket(m))return false;
+    if(m.status!=='معتمد'||mState(m)!=='متاح')return false;
+    if(m.purpose==='إدارة أملاك')return false;
+    if((m.channels||[]).indexOf('الموقع')<0)return false;
+    return adOK(m);
+  });
+}
+function feedJSON(){
+  var o=Repo.find('offices',Session.office.id)||{};
+  var rows=webListings().map(function(m){
+    var a=asset(m),l=adLic(m);
+    return {                       /* بيانات المالك لا تخرج من النظام أبدًا */
+      ref:refOf(m), purpose:m.purpose, type:a.type, desc:a.desc||'', city:a.city||'', hood:a.hood||'',
+      price:m.price, beds:a.beds||0, baths:a.baths||0, area:a.area||0,
+      photo:a.photo||null, ad:(l&&l.no)||'', ad_exp:(l&&l.exp)||'',
+      added:dstr(m.created_at)
+    };
+  });
+  return JSON.stringify({
+    office:{name:o.name_ar||'',phone:o.phone||'',fal:o.fal||'',cr:o.cr||''},
+    generated:nowISO(), count:rows.length, listings:rows
+  },null,1);
+}
+function feedSheet(){
+  var rows=webListings(),j=feedJSON(),kb=Math.round(j.length/1024);
+  var blocked=Repo.where('mandates',function(m){
+    return !isMarket(m)&&m.status==='معتمد'&&mState(m)==='متاح'&&
+      m.purpose!=='إدارة أملاك'&&(m.channels||[]).indexOf('الموقع')>-1&&!adOK(m);
+  });
+  sheet('<h3>'+L('نشر إلى الموقع','Publish to the website')+'</h3>'+
+  '<div class="sub">'+L('ملف يُنزَّل ويُرفع إلى مستودع الصفحة العامة',
+    'A file you download and upload to the public page repository')+'</div>'+
+  '<div class="grid2"><div class="m '+(rows.length?'g':'a')+'"><div class="t">'+
+    L('جاهز للنشر','Ready')+'</div><div class="v num">'+rows.length+'</div></div>'+
+  '<div class="m"><div class="t">'+L('حجم الملف','File size')+'</div>'+
+  '<div class="v num">'+kb+'<small>KB</small></div></div></div>'+
+  (blocked.length?'<div class="note" style="border-color:var(--clay)"><b>'+blocked.length+'</b> '+
+    L('عقارًا اخترتموه للموقع لكن رخصته الإعلانية ناقصة أو منتهية — لن يُنشر.',
+      'chosen for the website but missing or expired advertising licence — will not be published.')+'</div>':'')+
+  (rows.length
+   ? rows.map(function(m){var a=asset(m);
+       return '<div class="r"><div class="ic g">'+(ICONS[a.type]||'🏠')+'</div><div class="rm">'+
+       '<div class="rt">'+mandateTitle(m)+'</div>'+
+       '<div class="rs num">'+refOf(m)+' · '+M(m.price)+' · '+L('ترخيص','licence')+' '+
+       esc((adLic(m)||{}).no||'')+'</div></div></div>';}).join('')
+   : '<div class="empty">'+L('لا عقار جاهز للنشر بعد','Nothing ready to publish')+
+     '<br>'+L('اختر «الموقع» في قنوات النشر بعد تسجيل الترخيص الإعلاني',
+       'Tick “Website” in the publishing channels once the advertising licence is on file')+'</div>')+
+  '<div class="note">'+L('بيانات الملّاك لا تخرج في هذا الملف. ويحمل كل عقار رقم ترخيصه الإعلاني كما يوجب النظام.',
+    'No owner data leaves in this file. Every listing carries its advertising licence number.')+'</div>'+
+  (rows.length?'<button class="btn" onclick="downloadFeed()">'+
+    L('نزّل listings.json','Download listings.json')+'</button>':'')+
+  (rows.length?'<div class="note">'+L('ارفعه في مستودع الصفحة العامة باسم listings.json بالضبط، بجانب index.html.',
+    'Upload it to the public page repository as listings.json, next to index.html.')+'</div>':''));
+}
+function downloadFeed(){
+  var j=feedJSON();
+  try{
+    var b=new Blob([j],{type:'application/json'});
+    var u=URL.createObjectURL(b);
+    var a=document.createElement('a'); a.href=u; a.download='listings.json';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function(){URL.revokeObjectURL(u);},2000);
+    Repo.update('offices',Session.office.id,{feed_at:nowISO()});
+    logAct('office',Session.office.id,'feed','نُشر '+webListings().length+' عقارًا إلى الموقع',
+      'Website feed exported');
+    render();toast(L('نُزّل — ارفعه في مستودع الصفحة','Downloaded — upload it to the page repo'));
+  }catch(e){toast(L('تعذّر التنزيل','Download failed'));}
+}
+
+/* مدة التفويض تنتهي كما تنتهي الرخصة — والتسويق بعدها بلا سند */
+function authOf(m){
+  if(!m.auth||!m.auth.at)return null;
+  var end=addMonths(m.auth.at,m.auth.months||3);
+  return {at:dstr(m.auth.at),end:end,months:m.auth.months||3,
+    exclusive:!!m.auth.exclusive,rate:m.auth.rate,
+    left:daysBetween(end,new Date())};
+}
+function authOK(m){
+  if(m.source==='partner')return true;   /* التفويض عند المكتب الشريك */
+  if(isMarket(m))return false;
+  var a=authOf(m);
+  return !!a && a.left>=0;
+}
+/* نص الاتفاقية — يُرسل للمالك ويُحفظ نصّه كما أُرسل */
+function authText(mid,months,exclusive,rate){
+  var m=Repo.find('mandates',mid),a=asset(m),o=contactOf(a.owner_id),of=Session.office;
+  var start=todayStr(),end=addMonths(start,months);
+  var A=[];
+  A.push('اتفاقية تسويق عقار');
+  A.push('');
+  A.push('المكتب: '+of.name_ar);
+  if(of.fal)A.push('رخصة فال: '+of.fal);
+  if(of.cr)A.push('السجل التجاري: '+of.cr);
+  A.push('');
+  A.push('المالك: '+o.name_ar);
+  A.push('العقار: '+unitName(a)+' — '+a.hood+(a.city?'، '+a.city:''));
+  A.push('الغرض: '+m.purpose);
+  A.push('السعر المطلوب: '+M(m.price)+' ريال'+(m.purpose==='إيجار'?' سنويًا':''));
+  A.push('');
+  A.push('مدة التفويض: '+nAdj(months,'شهر واحد','شهران','أشهر','شهرًا')+
+    ' من '+start+' إلى '+end);
+  A.push('نوع التفويض: '+(exclusive?'حصري — لا يُسوَّق عبر غيرنا خلال المدة':'غير حصري'));
+  A.push('عمولة المكتب: '+rate+'% من قيمة العقد، تُستحق عند إتمام الصفقة');
+  A.push('');
+  A.push('نلتزم بـ:');
+  A.push('· استخراج الترخيص الإعلاني قبل نشر أي إعلان');
+  A.push('· تقرير أسبوعي عن حالة العرض حتى لو لم يجدّ جديد');
+  A.push('· عدم عرض بياناتكم إلا على من ثبتت جديّته');
+  A.push('· إخطاركم بكل عرض وكل ملاحظة كما قيلت');
+  A.push('');
+  A.push('للموافقة المبدئية، أرسلوا كلمة «موافق» ردًّا على هذه الرسالة.');
+  A.push('');
+  A.push('ثم يُبرَم العقد النظامي على منصة الوساطة العقارية «فال» التابعة للهيئة العامة للعقار: https://rega.gov.sa');
+  A.push('');
+  A.push(of.name_ar);
+  return A.join('\n');
+}
+var FAL_URL='https://rega.gov.sa/rega-services/platforms/fal-real-estate-brokerage/';
+var auDraft={months:2,exclusive:false};
+function authSheet(mid){
+  var m=Repo.find('mandates',mid),a=asset(m),cur=authOf(m);
+  if(!a.owner_id)return sheet('<h3>'+L('تفويض التسويق','Marketing authorization')+'</h3>'+
+    '<div class="note" style="border-color:var(--clay)">'+
+    L('هذا العقار بلا مالك مسجَّل. سجّل المالك أولًا — فالتفويض يصدر منه لا من العقار.',
+      'No owner on file. Register the owner first — the authorization comes from a person.')+'</div>');
+  var rate=comRate(m.purpose);
+  if(!auDraft.mid||auDraft.mid!==mid)auDraft={mid:mid,months:2,exclusive:false};
+  var tx=authText(mid,auDraft.months,auDraft.exclusive,rate);
+  sheet('<h3>'+L('تفويض التسويق','Marketing authorization')+'</h3>'+
+  '<div class="sub">'+mandateTitle(m)+' · '+esc(contactOf(a.owner_id).name_ar)+'</div>'+
+  (cur?'<div class="hero '+(cur.left<0?'a':cur.left<=14?'w':'g')+'"><div class="t">'+
+    L('تفويض قائم','Authorized')+'</div><div class="v num">'+Math.abs(cur.left)+'</div>'+
+    '<div class="f">'+(cur.left<0?L('يومًا منذ انتهائه','days since it expired')
+      :L('يومًا متبقية · حتى ','days left · until ')+cur.end)+
+    (cur.exclusive?' · <b style="color:var(--gold)">'+L('حصري','Exclusive')+'</b>':'')+'</div></div>':'')+
+  '<div class="f"><label>'+L('المدة','Duration')+'</label><div class="pick">'+
+  [2,4,6].map(function(n2){
+    return '<button class="pk '+(auDraft.months===n2?'on':'')+'" onclick="auDraft.months='+n2+';authSheet(\''+mid+'\')">'+
+    nAdj(n2,'شهر','شهران','أشهر','شهرًا')+'</button>';}).join('')+'</div></div>'+
+  '<div class="note">'+L('نظام الوساطة يوجب أن يكون العقد محدد المدة، وإذا لم تُذكر فهي تسعون يومًا من تاريخ إبرامه.',
+    'The regulation requires a fixed term; absent one it is ninety days.')+'</div>'+
+  '<div class="f"><label>'+L('النوع','Type')+'</label><div class="pick">'+
+  [[0,L('غير حصري','Non-exclusive')],[1,L('حصري','Exclusive')]].map(function(x){
+    return '<button class="pk '+((auDraft.exclusive?1:0)===x[0]?'on':'')+
+    '" onclick="auDraft.exclusive='+(x[0]?'true':'false')+';authSheet(\''+mid+'\')">'+x[1]+'</button>';}).join('')+'</div></div>'+
+  '<div class="note">'+L('العمولة تُؤخذ من إعدادات المكتب ('+rate+'%) وتُثبَّت في نص الاتفاقية، فلا تُتفاوض وقت المال.',
+    'The rate comes from Settings and is fixed in the text, so it is not renegotiated when the money arrives.')+'</div>'+
+  '<div class="bubble">'+esc(tx)+'</div>'+
+  '<button class="btn" onclick="sendAuth(\''+mid+'\')">'+L('أرسله للمالك','Send it to the owner')+'</button>'+
+  '<button class="btn o" onclick="confirmAuth(\''+mid+'\')">'+L('وافق المالك — سجّل التفويض','Owner agreed — record it')+'</button>'+
+  '<div class="sec">'+L('العقد الرسمي','The official contract')+'</div>'+
+  '<div class="note">'+L('العقد النظامي يُبرَم على منصة الوساطة العقارية «فال» التابعة للهيئة العامة للعقار. ونصّنا أعلاه تمهيد وسجل للشروط، لا بديل عنه.',
+    'The statutory contract is concluded on REGA\u2019s FAL platform. The text above is a preface, not a substitute.')+'</div>'+
+  '<a class="btn g" href="'+FAL_URL+'" target="_blank" rel="noopener" style="display:block;text-align:center;text-decoration:none">'+
+    L('افتح منصة الوساطة «فال»','Open the FAL platform')+'</a>'+
+  '<div class="f" style="margin-top:11px"><label>'+L('رقم عقد الوساطة الرسمي','Official contract number')+'</label>'+
+  '<input id="aofc" value="'+esc((m.auth&&m.auth.official)||'')+'" placeholder="'+
+  L('يُسجَّل بعد إبرامه على المنصة','recorded after it is concluded')+'"></div>'+
+  '<button class="btn s o" onclick="saveOfficial(\''+mid+'\')">'+L('احفظ رقم العقد','Save the number')+'</button>'+
+  '<div class="note">'+L('«موافق» على واتساب إثبات عملي يُحفظ نصّه هنا، ولا يُغني عن اتفاقية موقّعة متى طُلبت نظامًا.',
+    'A WhatsApp “agreed” is practical evidence kept here; it does not replace a signed agreement where one is required.')+'</div>');
+}
+function saveOfficial(mid){
+  var m=Repo.find('mandates',mid),no=val('aofc');
+  Repo.update('mandates',mid,{auth:Object.assign({},m.auth||{},{official:no||null})});
+  logAct('mandate',mid,'auth_official','سُجّل رقم عقد الوساطة '+(no||'—'),'Official contract recorded');
+  render();toast(t('saved'));
+}
+function sendAuth(mid){
+  var m=Repo.find('mandates',mid),a=asset(m),o=contactOf(a.owner_id);
+  var rate=comRate(m.purpose);
+  var tx=authText(mid,auDraft.months,auDraft.exclusive,rate);
+  logAct('mandate',mid,'auth_sent','أُرسلت اتفاقية التسويق للمالك '+o.name_ar,'Authorization sent');
+  send(o.phone||'',tx);
+}
+function confirmAuth(mid){
+  var m=Repo.find('mandates',mid),rate=comRate(m.purpose);
+  var tx=authText(mid,auDraft.months,auDraft.exclusive,rate);
+  Repo.update('mandates',mid,{auth:{at:nowISO(),months:auDraft.months,
+    exclusive:auDraft.exclusive,rate:rate,text:tx,by:Session.user.id}});
+  logAct('mandate',mid,'authorized','وافق المالك — تفويض '+auDraft.months+' أشهر'+
+    (auDraft.exclusive?' حصري':''),'Owner authorized');
+  notify('تفويض جديد — '+mandateTitle(m),'New authorization','info');
+  closeSheet();render();toast(L('سُجّل التفويض','Authorization recorded'));
+}
+
+function repOf(r){
+  if(!r||!r.rep||!r.rep.at)return null;
+  var end=addMonths(r.rep.at,r.rep.months||3);
+  return {at:dstr(r.rep.at),end:end,months:r.rep.months||3,
+    payer:r.rep.payer,rate:r.rep.rate,left:daysBetween(end,new Date())};
+}
+function repOK(r){var x=repOf(r);return !!x && x.left>=0;}
+function repText(rid,months,payer,rate){
+  var r=Repo.find('requirements',rid),c=contactOf(r.contact_id),of=Session.office;
+  var start=todayStr(),end=addMonths(start,months);
+  var A=[];
+  A.push('اتفاقية تمثيل عميل');
+  A.push('');
+  A.push('المكتب: '+of.name_ar);
+  if(of.fal)A.push('رخصة فال: '+of.fal);
+  A.push('');
+  A.push('العميل: '+c.name_ar);
+  A.push('الطلب: '+(r.types||[]).join(' أو ')+' لل'+(r.purpose==='بيع'?'شراء':'إيجار'));
+  if((r.cities||[]).length)A.push('المدينة: '+r.cities.join(' و'));
+  if((r.hoods||[]).length)A.push('الأحياء: '+r.hoods.join('، '));
+  A.push('الميزانية: '+M(r.min)+' – '+M(r.max)+' ريال');
+  A.push('');
+  A.push('نمثّلكم أنتم في هذه الصفقة، لا الطرف الآخر.');
+  A.push('مدة التمثيل: '+nAdj(months,'شهر واحد','شهران','أشهر','شهرًا')+
+    ' من '+start+' إلى '+end);
+  A.push('العمولة: '+rate+'% يدفعها '+payer+', وتُستحق عند إتمام الصفقة فقط.');
+  A.push('');
+  A.push('نلتزم بـ:');
+  A.push('· البحث في عروضنا وخارجها، وإخباركم بما استبعدناه ولماذا');
+  A.push('· تقرير أسبوعي حتى لو لم يجدّ جديد');
+  A.push('· ألّا نعرض عليكم ما لا يناسبكم لمجرد إتمام صفقة');
+  A.push('· ألّا نمثّل الطرف الآخر في الصفقة نفسها');
+  A.push('');
+  A.push('وليس عليكم أي التزام إن لم نجد ما يناسبكم.');
+  A.push('');
+  A.push('للموافقة المبدئية، أرسلوا كلمة «موافق» ردًّا على هذه الرسالة.');
+  A.push('');
+  A.push('ثم يُبرَم العقد النظامي على منصة الوساطة العقارية «فال» التابعة للهيئة العامة للعقار: https://rega.gov.sa');
+  A.push('');
+  A.push(of.name_ar);
+  return A.join('\n');
+}
+/* السعي في الغالب على طالب الخدمة، وأكثره على المشتري */
+var rpDraft={months:2,payer:'العميل'};
+function repSheet(rid){
+  var r=Repo.find('requirements',rid),c=contactOf(r.contact_id),cur=repOf(r);
+  var rate=comRate(r.purpose);
+  if(!rpDraft.rid||rpDraft.rid!==rid)rpDraft={rid:rid,months:2,payer:'العميل'};
+  var tx=repText(rid,rpDraft.months,rpDraft.payer,rate);
+  sheet('<h3>'+L('تمثيل العميل','Client representation')+'</h3>'+
+  '<div class="sub">'+esc(c.name_ar)+' · '+esc(r.purpose)+'</div>'+
+  (cur?'<div class="hero '+(cur.left<0?'a':cur.left<=14?'w':'g')+'"><div class="t">'+
+    L('اتفاق قائم','Represented')+'</div><div class="v num">'+Math.abs(cur.left)+'</div>'+
+    '<div class="f">'+(cur.left<0?L('يومًا منذ انتهائه','days since it expired')
+      :L('يومًا متبقية · العمولة على ','days left · paid by ')+cur.payer)+'</div></div>':'')+
+  '<div class="f"><label>'+L('من يدفع العمولة','Who pays the commission')+'</label><div class="pick">'+
+  [['المالك',L('المالك','The owner')],['العميل',L('العميل','The client')]].map(function(x){
+    return '<button class="pk '+(rpDraft.payer===x[0]?'on':'')+
+    '" onclick="rpDraft.payer=\''+x[0]+'\';repSheet(\''+rid+'\')">'+x[1]+'</button>';}).join('')+'</div></div>'+
+  '<div class="f"><label>'+L('المدة','Duration')+'</label><div class="pick">'+
+  [2,4,6].map(function(n2){
+    return '<button class="pk '+(rpDraft.months===n2?'on':'')+'" onclick="rpDraft.months='+n2+';repSheet(\''+rid+'\')">'+
+    nAdj(n2,'شهر','شهران','أشهر','شهرًا')+'</button>';}).join('')+'</div></div>'+
+  '<div class="note">'+L('«من يدفع» أهم سطر في الاتفاق. العميل الذي يكتشف العمولة عند التوقيع ينسحب، والذي عرفها من أول يوم يُكملها.',
+    'Who pays is the line that matters. A client who discovers the fee at signing walks away.')+'</div>'+
+  '<div class="bubble">'+esc(tx)+'</div>'+
+  '<button class="btn" onclick="sendRep(\''+rid+'\')">'+L('أرسله للعميل','Send it to the client')+'</button>'+
+  '<button class="btn o" onclick="confirmRep(\''+rid+'\')">'+L('وافق العميل — سجّل الاتفاق','Client agreed — record it')+'</button>'+
+  '<div class="sec">'+L('العقد الرسمي','The official contract')+'</div>'+
+  '<div class="note">'+L('للمنصة خدمة «إبرام عقد وساطة مع المستأجر أو المشتري المحتمل» — يُبرَم هناك ويُسجَّل رقمه هنا.',
+    'The platform provides a brokerage contract with the prospective tenant or buyer.')+'</div>'+
+  '<a class="btn g" href="'+FAL_URL+'" target="_blank" rel="noopener" style="display:block;text-align:center;text-decoration:none">'+
+    L('افتح منصة الوساطة «فال»','Open the FAL platform')+'</a>'+
+  '<div class="f" style="margin-top:11px"><label>'+L('رقم عقد الوساطة الرسمي','Official contract number')+'</label>'+
+  '<input id="rofc" value="'+esc((r.rep&&r.rep.official)||'')+'" placeholder="—"></div>'+
+  '<button class="btn s o" onclick="saveRepOfficial(\''+rid+'\')">'+L('احفظ رقم العقد','Save the number')+'</button>');
+}
+function saveRepOfficial(rid){
+  var r=Repo.find('requirements',rid),no=val('rofc');
+  Repo.update('requirements',rid,{rep:Object.assign({},r.rep||{},{official:no||null})});
+  logAct('requirement',rid,'rep_official','سُجّل رقم عقد الوساطة '+(no||'—'),'Official contract recorded');
+  render();toast(t('saved'));
+}
+function sendRep(rid){
+  var r=Repo.find('requirements',rid),c=contactOf(r.contact_id),rate=comRate(r.purpose);
+  var tx=repText(rid,rpDraft.months,rpDraft.payer,rate);
+  logAct('requirement',rid,'rep_sent','أُرسلت اتفاقية التمثيل للعميل '+c.name_ar,'Representation sent');
+  send(c.phone||'',tx);
+}
+function confirmRep(rid){
+  var r=Repo.find('requirements',rid),rate=comRate(r.purpose);
+  var tx=repText(rid,rpDraft.months,rpDraft.payer,rate);
+  Repo.update('requirements',rid,{rep:{at:nowISO(),months:rpDraft.months,
+    payer:rpDraft.payer,rate:rate,text:tx,by:Session.user.id}});
+  logAct('requirement',rid,'represented','وافق العميل — تمثيل '+rpDraft.months+
+    ' أشهر، العمولة على '+rpDraft.payer,'Client agreed');
+  closeSheet();render();toast(L('سُجّل الاتفاق','Agreement recorded'));
+}
+
 function adOK(m){
   if(isMarket(m))return false;      /* لسنا وكلاءه — لا إعلان ولا نشر */
+  if(!authOK(m))return false;       /* ولا نُسوّق ما لم يأذن مالكه */
   var l=adLic(m); if(!l||!l.no)return false;
   if(l.exp&&daysBetween(l.exp,new Date())<0)return false;
   return true;
@@ -3331,7 +4074,7 @@ function adOK(m){
 function adText(mid){
   var m=Repo.find('mandates',mid),a=asset(m),o=Session.office;
   var A=[];
-  A.push(a.type+' لل'+(m.purpose==='بيع'?'بيع':'إيجار')+' — '+a.hood+(a.city?'، '+a.city:''));
+  A.push(unitName(a)+' لل'+(m.purpose==='بيع'?'بيع':'إيجار')+' — '+a.hood+(a.city?'، '+a.city:''));
   A.push('');
   var f=[];
   if(a.area)f.push('المساحة: '+M(a.area)+' م²');
@@ -3379,8 +4122,13 @@ function publishSheet(id){
     '<button class="btn" onclick="copyReport('+JSON.stringify(adText(id))+')">'+
       L('انسخ النص للنشر','Copy it for publishing')+'</button>'+
     '<button class="btn o" onclick="cardSheet(\''+id+'\')">'+L('بطاقة صورة','Image card')+'</button>'
-   :'<div class="note">'+L('لا تُفتح قنوات النشر قبل تسجيل رقم الترخيص الإعلاني. الإعلان بلا رقمه مخالفة على المكتب — والمنع هنا أرخص من الغرامة هناك.',
-      'Channels stay closed until the advertising licence number is on file.')+'</div>')+
+   :'<div class="note">'+(!authOK(m)
+      ? L('لا تُفتح قنوات النشر قبل تفويض المالك. تسويق عقار بلا إذن صاحبه ليس نقصًا إداريًا بل تجاوزًا.',
+          'No publishing before the owner authorizes. Marketing without permission is not an oversight.')+
+        '<div style="margin-top:8px"><button class="btn s o" onclick="authSheet(\''+id+'\')">'+
+        L('اطلب التفويض','Request the authorization')+'</button></div>'
+      : L('لا تُفتح قنوات النشر قبل تسجيل رقم الترخيص الإعلاني. الإعلان بلا رقمه مخالفة على المكتب — والمنع هنا أرخص من الغرامة هناك.',
+          'Channels stay closed until the advertising licence number is on file.'))+'</div>')+
   '<button class="btn g" onclick="closeSheet();render()">'+t('close')+'</button>');
 }
 function saveAdLic(id){
@@ -3732,14 +4480,36 @@ function assignProvider(sid){
 function doAssign(sid,pid){Repo.update('services',sid,{provider_id:pid,status:'مُسند'});
   closeSheet();render();toast(t('saved'));}
 
+/* حساب المكتب البنكي — يُذكر في المطالبة لا يُسأل عنه */
+function bankBlock(){
+  var o=Repo.find('offices',Session.office.id)||{};
+  if(!o.iban)return '';
+  var B=['','للتحويل:'];
+  if(o.bank_name)B.push('البنك: '+o.bank_name);
+  B.push('اسم الحساب: '+(o.bank_account||o.name_ar||''));
+  B.push('الآيبان: '+o.iban);
+  B.push('ونرجو إرسال صورة الإيصال بعد التحويل.');
+  return B.join('\n');
+}
 function payMsg(id){
   var p=Repo.find('payments',id),ct=Repo.find('contracts',p.contract_id),c=contactOf(ct.contact_id);
-  var m=Repo.find('mandates',ct.mandate_id);
-  var tx='تذكير بموعد سداد\nرقم العقد: '+ct.no+'\nاسم المستأجر: '+c.name_ar+
-   (m?'\nنوع الوحدة: '+asset(m).type:'')+'\nالمبلغ المستحق: '+M(p.amount-p.paid)+' ريال'+
-   '\nتاريخ الاستحقاق: '+p.due+'\n'+Session.office.name_ar;
+  var m=Repo.find('mandates',ct.mandate_id),o=Repo.find('offices',Session.office.id)||{};
+  var late=payState(p)==='متأخر';
+  var tx=(late?'إشعار بتأخر سداد':'تذكير بموعد سداد')+
+   '\nرقم العقد: '+ct.no+'\nاسم المستأجر: '+c.name_ar+
+   (m?'\nنوع الوحدة: '+asset(m).type:'')+
+   '\nالمبلغ المستحق: '+M(payRemain(p))+' ريال'+
+   '\nتاريخ الاستحقاق: '+p.due+
+   (late?'\nمتأخر منذ '+daysBetween(new Date(),p.due)+' يومًا':'')+
+   bankBlock()+
+   '\n\n'+o.name_ar+(o.fal?'\nرخصة فال: '+o.fal:'');
   sheet('<h3>'+L('الرسالة كما ستصل','The message as sent')+'</h3>'+
   '<div class="sub">'+L('لا تُرسل رسالة قبل اعتماد نصها','No message before its wording is approved')+'</div>'+
+  (!o.iban?'<div class="note" style="border-color:var(--clay)">'+
+    L('لم يُسجَّل حساب المكتب البنكي — المطالبة بلا آيبان تُجبر المستأجر على سؤال إضافي، وكل سؤال يؤخّر السداد يومًا.',
+      'No IBAN on file yet — the request forces an extra question, and every question costs a day.')+
+    '<div style="margin-top:8px"><button class="btn s o" onclick="closeSheet();go(\'settings\',0)">'+
+    L('سجّله الآن','Add it now')+'</button></div></div>':'')+
   '<div class="bubble">'+esc(tx)+'</div>'+
   '<button class="btn" onclick="send(\''+c.phone+'\','+JSON.stringify(tx)+')">WhatsApp</button>');
 }
@@ -3867,7 +4637,7 @@ function ownerReportText(mid){
   var keys=Object.keys(tal).sort(function(x,y){return tal[y]-tal[x];});
 
   Ls.push('تقرير عن عقاركم — التقرير '+ord);
-  Ls.push(a.type+' — '+a.hood+(a.city?' · '+a.city:'')+' · '+M(m.price)+' ريال');
+  Ls.push(unitName(a)+' — '+a.hood+(a.city?' · '+a.city:'')+' · '+M(m.price)+' ريال');
   Ls.push('');
   Ls.push('الحالة:');
   Ls.push('· في السوق منذ '+daysOnMarket(m)+' يومًا');
@@ -4000,7 +4770,7 @@ function reportText(r){
       if((r.hoods||[]).length&&r.hoods.indexOf(a.hood)<0)flag.push('خارج أحيائكم المطلوبة');
       if(r.beds&&!a.beds)flag.push('عدد غرفه لم يُسجَّل بعد — نؤكده قبل المعاينة');
       else if(r.beds&&a.beds<r.beds)flag.push('غرفه أقل بواحدة');
-      L1.push((k+1)+') '+a.type+' — '+a.hood+' · '+M(x.m.price)+' ريال'+
+      L1.push((k+1)+') '+unitName(a)+' — '+a.hood+' · '+M(x.m.price)+' ريال'+
         (a.beds?' · '+a.beds+' غرف':'')+(a.area?' · '+a.area+' م²':'')+
         '\n   ['+routeLabel(routeOf(x.m))+' — '+routeNote(routeOf(x.m))+']'+
         (flag.length?'\n   (نعرضه رغم أنه '+flag.join('، و')+')':''));
@@ -4016,7 +4786,7 @@ function reportText(r){
       nAr(d.spot.length,'عقار','عقارين','عقارات','عقارًا')+' يطابق طلبكم:');
     d.spot.slice(0,4).forEach(function(x,k){
       var a=x.a,st=x.m.market_status||'رُصد';
-      L1.push((k+1)+') '+a.type+' — '+a.hood+' · '+M(x.m.price)+' ريال'+
+      L1.push((k+1)+') '+unitName(a)+' — '+a.hood+' · '+M(x.m.price)+' ريال'+
         (a.beds?' · '+a.beds+' غرف':'')+
         '\n   ('+(st==='تواصلنا'?'تواصلنا مع مالكه وننتظر رده'
                  :st==='لا يرد'?'نحاول الوصول إلى مالكه'
@@ -4097,7 +4867,16 @@ function clientReport(rid){
   '<div class="note" style="margin-top:11px">'+L('الاستبعاد هو المنتج. أي مكتب يرسل قائمة؛ ونحن نقول ما استبعدناه ولماذا — وهذا ما لا يُقلَّد بسهولة.',
    'Any office can send a list. Saying what you excluded, and why, is the part that is hard to copy.')+'</div>'+
   '<button class="btn" onclick="markSent(\''+rid+'\','+JSON.stringify(c.phone||'')+','+JSON.stringify(tx)+')">'+t('send')+'</button>'+
-  '<button class="btn g" onclick="copyReport('+JSON.stringify(tx)+')">'+L('انسخ النص','Copy the text')+'</button>');
+  '<button class="btn g" onclick="copyReport('+JSON.stringify(tx)+')">'+L('انسخ النص','Copy the text')+'</button>'+
+  (d.hits.length?'<div class="sec">'+L('بطاقة خيار بعينه','Card for one option')+'</div>'+
+    '<div class="note">'+L('حين يسأل العميل «أرسل لي تفاصيل الثاني».',
+      'For when the client asks for details of one option.')+'</div>'+
+    d.hits.slice(0,5).map(function(x,k){
+      return '<button class="r" onclick="cardSheet(\''+x.m.id+'\',\''+rid+'\')">'+
+      '<div class="ic g">'+(k+1)+'</div><div class="rm">'+
+      '<div class="rt">'+esc(x.a.type+' — '+x.a.hood)+'</div>'+
+      '<div class="rs num">'+M(x.m.price)+'</div></div><div class="rv">\u203a</div></button>';}).join('')
+   :''));
 }
 function copyReport(tx){
   if(navigator.clipboard&&navigator.clipboard.writeText){
@@ -4121,9 +4900,15 @@ function contactSheet(id){
   sheet('<h3>'+esc(c.name_ar)+'</h3><div class="sub">'+esc(c.role)+' · <span class="num">'+esc(c.phone)+'</span>'+
   (c.source?' · '+esc(c.source):'')+'</div>'+
   (rs.length?'<div class="sec">'+L('طلباته','Requests')+' <b>'+rs.length+'</b></div>'+rs.map(function(r){
-    return '<button class="r" onclick="closeSheet();clientReport(\''+r.id+'\')"><div class="ic g">☰</div><div class="rm">'+
-    '<div class="rt">'+r.purpose+'</div><div class="rs num">'+M(r.min)+'–'+M(r.max)+'</div></div>'+
-    '<div class="rv"><div class="sc num">'+match(r).length+'</div></div></button>';}).join(''):'')+
+    return '<div class="r top"><div class="ic '+(repOK(r)?'g':'w')+'">☰</div><div class="rm">'+
+    '<div class="rt">'+r.purpose+'</div><div class="rs num">'+M(r.min)+'–'+M(r.max)+'</div>'+
+    '<div class="rs">'+(repOK(r)
+      ? L('ممثَّل · العمولة على ','Represented · paid by ')+esc((repOf(r)||{}).payer||'')
+      : '<b style="color:var(--clay)">'+L('بلا اتفاق تمثيل','No representation agreement')+'</b>')+'</div>'+
+    '<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">'+
+    '<button class="btn s o" onclick="closeSheet();clientReport(\''+r.id+'\')">'+t('client_report')+'</button>'+
+    '<button class="btn s g" onclick="repSheet(\''+r.id+'\')">'+L('التمثيل','Representation')+'</button>'+
+    '</div></div><div class="rv"><div class="sc num">'+match(r).length+'</div></div></div>';}).join(''):'')+
   (ds.length?'<div class="sec">'+L('صفقاته','Deals')+' <b>'+ds.length+'</b></div>'+ds.map(function(d){
     var m=Repo.find('mandates',d.mandate_id);
     return '<button class="r" onclick="dealSheet(\''+d.id+'\')"><div class="ic '+(d.won?'g':isClosed(d)?'a':'w')+'">◆</div>'+
@@ -4227,6 +5012,7 @@ function setWeekDay(i){
 function saveOffice(){
   Repo.update('offices',Session.office.id,{name_ar:val('on'),fal:val('ofal'),cr:val('ocr'),
     ad_licence:val('oad'),ad_expiry:val('oadx'),fal_expiry:val('ofex'),
+    bank_name:val('obank'),bank_account:val('oacc'),iban:(val('oiban')||'').replace(/\s+/g,' ').trim(),
     vat:val('ovat'),phone:val('oph'),
     sla_hours:+val('osla')||24,
     rate_sale:+val('ors')||0,rate_rent:+val('orr')||0});
